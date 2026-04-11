@@ -1,0 +1,21 @@
+# Python environment
+.venv/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# PRISM generated runtime outputs
+other_outputs/
+Other_Outputs/
+images/actual_vs_predicted.png
+images/feature_importance.png
+images/target_distribution.png
+images/metrics_summary.csv
+images/predictions_preview.csv

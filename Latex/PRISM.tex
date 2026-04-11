@@ -1,0 +1,952 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage[margin=0.72in,columnsep=0.25in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage[noend]{algorithmic}
+\usepackage{xcolor}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage{bm}
+\usepackage{tcolorbox}
+
+\setlist{nosep,leftmargin=*}
+\newcommand{\placeholder}[1]{\textcolor{red!70!black}{\texttt{[#1]}}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\sign}{\mathrm{sign}}
+\newcommand{\MAD}{\mathrm{MAD}}
+\newcommand{\clip}{\mathrm{clip}}
+\newcommand{\bw}{\bm{w}}
+\newcommand{\bmu}{\bm{\mu}}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\title{\textbf{PRISM: Predictive Returns and Inferred Structure\\for Modern Portfolios}\\[4pt]
+\large Sharpe--Optimal Allocation under Forecast Uncertainty\\with Kantorovich Order Flow}
+
+\author{Benjamin Coriat\\
+ECSE 551 --- Machine Learning for Engineers, McGill University\\
+\texttt{benjamin.coriat@mail.mcgill.ca}}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Machine learning has dramatically improved financial return
+prediction, yet translating forecasts into portfolios remains
+fragile: optimisers amplify estimation noise, and na\"ive
+diversification often wins.  We present PRISM, a framework that
+closes this gap by treating forecast uncertainty as a first-class
+object.  Alongside every return and correlation prediction, the
+pipeline produces a structured five-dimensional error profile
+that quantifies \emph{how much to trust it}.  These profiles feed
+a per-asset confidence score, which drives a Normal--Inverse-Wishart
+Bayesian update that shrinks unreliable forecasts toward the market
+mean.  The resulting regularised inputs enter a Sharpe-maximising
+convex programme whose solution is executed at minimum transaction
+cost via Sinkhorn optimal transport.  We backtest the full pipeline
+on 24 global equity indices and commodities over 2012--2025 at
+weekly frequency, with all strategies vol-targeted to 15\% for
+fair comparison.  We provide complete mathematical derivations,
+pseudocode aligned with the implemented codebase, and placeholders
+for empirical results pending execution.
+\end{abstract}
+
+%======================================================================
+\section{Introduction}\label{sec:intro}
+%======================================================================
+
+Markowitz~\cite{markowitz1952} showed that the mean--variance
+optimal portfolio satisfies $\bw^*\propto\Sigma^{-1}\bmu$,
+where $\bmu$ is the expected return vector and $\Sigma$ the
+covariance matrix.  The formula is elegant but dangerous in
+practice: $\Sigma^{-1}$ amplifies noise in $\bmu$, so small
+estimation errors produce wildly different---and often
+pathological---portfolios~\cite{merton1980}.  Michaud~\cite{michaud1989}
+called this ``estimation error maximisation.''
+DeMiguel et~al.~\cite{demiguel2009} provided the sharpest
+indictment: across 14 models and 7 datasets, na\"ive
+equal-weight ($1/N$) diversification matched or beat every
+optimised strategy after transaction costs, precisely because
+optimisers consume estimation noise as if it were signal.
+
+Modern machine learning has significantly improved forecast
+accuracy.  Gu et~al.~\cite{gu2020empirical} showed that neural
+networks and tree ensembles produce economically meaningful
+out-of-sample $R^2$ for individual stock returns.  Yet the standard
+practice remains to plug ML predictions directly into an optimiser
+as if they were ground truth---ignoring the fact that even a
+state-of-the-art model's $R^2$ rarely exceeds 1--2\% at the weekly
+horizon.  The result is that better predictions do not
+automatically yield better portfolios.
+
+PRISM addresses this disconnect.  The central idea is to produce,
+alongside every forecast, a structured \emph{error profile} that
+quantifies how reliable it is.  Concretely, at each weekly
+rebalancing date the pipeline delivers five tensors:
+\begin{enumerate}
+\item $\hat\bmu_{t+1}\in\R^n$: predicted return vector.
+\item $E_\mu\in\R^{n\times 5}$: return error characterisation
+  (bias, directional accuracy, dispersion, skewness, kurtosis).
+\item $\hat C_{t+1}\in\R^{n\times n}$: predicted correlation matrix.
+\item $E_C\in\R^{n\times n\times 4}$: correlation error tensor.
+\item $V\in\R^{n\times 26}$: volatility history matrix.
+\end{enumerate}
+The allocation layer consumes these tensors through mathematically
+principled channels: $E_\mu$ feeds a confidence score that drives
+Bayesian shrinkage of $\hat\bmu$; $E_C$ and $V$ inform the
+covariance estimate; and the resulting regularised inputs enter a
+Sharpe-maximising convex programme.  The target portfolio is then
+executed via Sinkhorn optimal transport to minimise transaction
+costs.
+
+The paper is organised to mirror the pipeline.
+Section~\ref{sec:lit} surveys related work.
+Section~\ref{sec:data} describes the data.
+Section~\ref{sec:ensemble} details the forecasting ensemble.
+Section~\ref{sec:error} formalises the error characterisation.
+Section~\ref{sec:confidence} derives the confidence scores and
+Bayesian posterior.
+Section~\ref{sec:sharpe} derives the Sharpe-optimal allocation
+from first principles.
+Section~\ref{sec:ot} derives the optimal transport execution.
+Section~\ref{sec:results} presents the empirical results.
+
+%======================================================================
+\section{Related Work}\label{sec:lit}
+%======================================================================
+
+\textbf{Mean--variance optimisation and its fragility.}
+Markowitz~\cite{markowitz1952} introduced mean--variance
+optimisation; Sharpe~\cite{sharpe1966} proposed the reward-to-variability
+ratio that bears his name.  The sensitivity of
+$\bw^*=\Sigma^{-1}\bmu$ to input estimation error was analysed
+by Merton~\cite{merton1980}, who showed that expected returns are
+far harder to estimate than covariances from historical data.
+Michaud~\cite{michaud1989} coined the term ``estimation error
+maximiser'' for the Markowitz optimiser.  Best and
+Grauer~\cite{best1991} proved that the tangent portfolio is
+extremely sensitive to perturbations in the mean vector, with
+the condition number of $\Sigma$ governing the amplification.
+Chopra and Ziemba~\cite{chopra1993} quantified the relative
+importance of errors in means versus variances versus covariances.
+DeMiguel et~al.~\cite{demiguel2009} showed that the combined effect
+of estimation error typically overwhelms the theoretical gains of
+optimisation for sample sizes available in practice.
+
+\textbf{Shrinkage and robust estimation.}
+Ledoit and Wolf~\cite{ledoit2004} proposed shrinking the sample
+covariance toward a structured target (constant correlation or
+identity), choosing the intensity by minimising expected squared
+Frobenius loss.  James and Stein~\cite{james1961} showed that
+shrinking individual estimates toward a grand mean reduces total
+expected squared error for $n\ge 3$.  Jorion~\cite{jorion1986}
+applied this to portfolio means, showing that Bayes--Stein
+shrinkage significantly improves out-of-sample performance.
+Black and Litterman~\cite{black1992} embedded prior views through
+a Bayesian framework, though their model requires the investor to
+specify a view matrix and uncertainty.  Ben-Tal
+et~al.~\cite{bental2009} formalised robust optimisation under
+ellipsoidal uncertainty sets for both means and covariances.
+
+\textbf{Machine learning for asset pricing.}
+Gu et~al.~\cite{gu2020empirical} provided a comprehensive
+comparison of ML methods (neural nets, trees, penalised linear
+models) for cross-sectional stock return prediction, reporting
+monthly $R^2$ up to 0.40\% out-of-sample.  Feng
+et~al.~\cite{feng2020taming} used deep learning to discover
+latent asset pricing factors.  Stacked
+generalisation~\cite{wolpert1992,breiman1996} combines
+heterogeneous learners through a meta-model, reducing variance at
+modest bias cost; it is well-suited to noisy financial targets
+because diversity among base learners prevents overfitting to any
+single signal.
+
+\textbf{Optimal transport in finance.}
+Cuturi~\cite{cuturi2013} introduced entropic regularisation for
+scalable OT computation; Peyr\'e and Cuturi~\cite{peyre2019}
+provide a comprehensive survey.  In finance, Blanchet and
+Murthy~\cite{blanchet2019} used Wasserstein ambiguity sets for
+distributionally robust portfolio selection.  Mohajerin Esfahani
+and Kuhn~\cite{esfahani2018} showed that Wasserstein DRO is
+tractable and performs well for data-driven stochastic programming.
+The application of OT to \emph{execution}---routing capital flows
+from a current to a target portfolio at minimum cost---is, to our
+knowledge, novel.
+
+%======================================================================
+\section{Data Pipeline}\label{sec:data}
+%======================================================================
+
+\subsection{Universe and horizon}
+
+The asset universe consists of $n=24$ instruments: 19 global
+equity indices spanning North America (S\&P~500, Nasdaq~100,
+DJIA, Russell~2000, TSX), Europe (FTSE~100, DAX, Euro Stoxx~50,
+CAC~40, IBEX~35), Asia-Pacific (Nikkei~225, Hang~Seng, ASX~200,
+BSE Sensex, Nifty~50, KOSPI, TAIEX), and Latin America
+(Bovespa, IPC Mexico); the VIX volatility index; and 4 commodity
+futures (gold, silver, crude oil, natural gas).  Daily OHLCV data
+is downloaded from Yahoo Finance (January 2003 -- December 2025)
+with \texttt{auto\_adjust=False} to preserve raw OHLC ranges.
+Training period: 2003--2011 (9 years).
+Out-of-sample test: 2012--2025 (14 years).
+
+\placeholder{Figure~1: Log-scale evolution of all 24 assets,
+normalised to 1 at 2003 (Plot~P26).}
+
+\subsection{Cleaning and resampling}
+
+Per ticker: Close is forward-filled; Open/High/Low are
+back-filled from Close if missing; Volume defaults to zero.
+Tickers with fewer than 100 surviving daily bars are dropped;
+$n$ is determined dynamically.  Daily data is aggregated to
+weekly frequency anchored on Friday:
+$O=\text{first}$, $H=\max$, $L=\min$, $C=\text{last}$,
+$V=\sum$.  Weekly simple returns:
+$r_{i,w}=C_{i,w}/C_{i,w-1}-1$.
+
+\subsection{Volatility estimation}
+
+Rather than close-to-close volatility (which uses only two
+prices per period), we use the Garman--Klass
+estimator~\cite{garman1980}, which exploits the full OHLC range:
+\begin{equation}\label{eq:gk}
+\hat\sigma_{i,w}^{\mathrm{GK}} = \sqrt{\max\!\Big(
+  \tfrac{1}{2}(\ln H{-}\ln L)^2
+  - (2\ln 2{-}1)(\ln C{-}\ln O)^2,\;0\Big)}.
+\end{equation}
+Under driftless geometric Brownian motion,
+$\Var(\hat\sigma_{\mathrm{GK}}^2)\approx 0.273\,\sigma^4$,
+yielding $\approx 7.3\times$ the statistical efficiency of
+close-to-close estimation.  This matters because better
+volatility estimates feed directly into a better covariance
+matrix downstream.
+
+%======================================================================
+\section{Forecasting Ensemble}\label{sec:ensemble}
+%======================================================================
+
+Two prediction tasks are solved independently: next-week pairwise
+correlation $\hat\rho_{ij,w+1}$ (one model per unordered pair) and
+next-week asset return $r_{i,w+1}$ (one model per ticker).
+Each task uses an identical stacked ensemble architecture.
+
+\subsection{Feature construction}
+
+\textbf{Correlation features} ($d_p=10$).
+For each pair $(i,j)$ with $i<j$ and week $w$: four values of the
+26-week rolling Pearson correlation at lags $\{0,1,2,4\}$, both
+assets' current returns, both GK volatilities, their ratio
+$\sigma_i/(\sigma_j+\epsilon)$, and their product $\sigma_i\sigma_j$.
+The vol ratio and cross-vol features capture the empirical
+correlation--volatility feedback documented by
+Longin and Solnik~\cite{longin2001}: correlations rise during
+high-volatility episodes, and asymmetrically so.
+
+\textbf{Return features} ($d_r=14$).
+For each ticker $i$ and week $w$: five lagged returns at horizons
+$\{1,2,4,8,12\}$ weeks, three rolling means at 4-, 12-, and
+26-week windows, two rolling standard deviations at 8 and 12 weeks,
+the GK volatility, a vol-of-vol measure (standard deviation of GK
+over 8 weeks), and a return acceleration term
+$a=\bar r^{(4)}-\bar r^{(12)}$ that captures momentum changes.
+
+\placeholder{Table~1: Feature summary with names, formulas,
+and coverage statistics from the training set.}
+
+\subsection{Stacked generalisation}
+
+Stacked generalisation~\cite{wolpert1992}, also called stacked
+regression~\cite{breiman1996}, combats overfitting by training a
+meta-model on out-of-fold predictions of diverse base learners.
+The theoretical motivation is bias--variance decomposition: if
+base learners make uncorrelated errors, the meta-model's variance
+decreases as $1/M$ while bias is controlled by the richest base
+learner.
+
+\textbf{Base learners} ($M=9$).
+We use three model families for maximum diversity:
+\begin{enumerate}
+\item \textit{Linear models} (4): OLS (no regularisation), Ridge
+  ($\alpha=1$, tunable in $[10^{-4},100]$), Lasso
+  ($\alpha=10^{-3}$, \texttt{max\_iter}=5000), ElasticNet
+  ($\alpha=10^{-3}$, $\ell_1$-ratio=0.5).
+\item \textit{Tree ensembles} (4): Random Forest (250 trees,
+  max depth 6, min leaf 5), Extra Trees (250 trees, depth 8,
+  min leaf 3), gradient boosting (300 rounds, depth 3,
+  $\eta=0.05$), AdaBoost (100 estimators, $\eta=0.05$).
+\item \textit{Neural network} (1): a 3-hidden-layer MLP with 64
+  units per layer, ReLU activations, dropout 0.1, trained with
+  Adam ($\mathrm{lr}=10^{-3}$, weight decay $10^{-4}$) for up to
+  100 epochs with early stopping (patience 12).
+\end{enumerate}
+
+Six of the nine (Ridge, Lasso, ElasticNet, RF, ExtraTrees, GBM)
+are tuned via Optuna~\cite{akiba2019optuna} with TPE sampling,
+10 trials or 20\,s wall-clock (whichever binds first), and 5-fold
+\texttt{TimeSeriesSplit} cross-validation scored by MSE.
+
+\textbf{Training procedure.}
+For each pair or ticker: (i)~filter to the training period and
+require $\ge 50$ observations; (ii)~split 80/20 chronologically
+into base and meta sets; (iii)~fit a \texttt{StandardScaler} on
+the base set and transform both; (iv)~train all 9 base learners
+on the base set (with Optuna tuning where applicable);
+(v)~predict on the meta set to form meta-features; (vi)~train the
+meta-model; (vii)~store the scaler, base models, and meta-model.
+
+\textbf{Meta-feature construction.}
+After base training, predictions on the held-out meta set produce a
+$2M$-dimensional vector per observation:
+\begin{equation}\label{eq:meta}
+\bm{z}_t = \big(\hat{y}_t^{(1)},\dots,\hat{y}_t^{(M)},\;
+  |\hat{y}_t^{(1)}{-}y_t|,\dots,|\hat{y}_t^{(M)}{-}y_t|\big)
+  \in\R^{18}.
+\end{equation}
+The first $M$ components are raw predictions; the second $M$ are
+absolute errors.  A Ridge meta-model ($\alpha=1$) is trained on
+$\bm{z}_t$ to learn the optimal combination.
+
+At test time the absolute-error features are set to zero (the true
+target is unavailable), so the meta-model reduces to a learned
+linear blend of base predictions.  This is consistent with the code:
+\texttt{np.hstack([bp, np.zeros\_like(bp)])}.
+
+\textbf{Scale.}
+The pipeline trains $\binom{n}{2}\approx 276$ pair ensembles and
+$n\approx 24$ return ensembles.  Each ensemble has 9 base learners
+and a meta-model, for a total of $\approx 2{,}700$ fitted models
+per pair task and $\approx 240$ per return task.
+
+\placeholder{Table~2: Per-base-learner MSE and $R^2$ on the meta
+set, averaged across tickers, with ensemble (stacked) row.}
+
+\placeholder{Figure~2: Meta-model Ridge coefficients for the return
+task (Plot~P20), showing which base learners receive weight.}
+
+%======================================================================
+\section{Error Characterisation}\label{sec:error}
+%======================================================================
+
+Accurate predictions are necessary but not sufficient for good
+portfolios.  What matters is knowing \emph{which} predictions to
+trust.  At each test date $t$, the ensemble has been making
+predictions for all prior weeks $s<t$.  We maintain a running
+history of signed forecast errors
+$\varepsilon_{i,s}=\hat r_{i,s}^{\mathrm{pred}}-r_{i,s+1}$
+and distil five statistics per asset.
+
+\begin{definition}[Return error matrix $E_\mu\in\R^{n\times 5}$]
+\label{def:Emu}
+Let $\mathcal{H}_{i,t}=\{\varepsilon_{i,s}\}_{s<t}$ and
+$\lambda=0.94$ (half-life $\approx 11$ weeks).
+\begin{align}
+[E_\mu]_{i,1} &= \textstyle\sum_s w_s\varepsilon_{i,s}
+  &&\text{(EWMA bias)},\label{eq:emu1}\\
+[E_\mu]_{i,2} &= \mathbf{1}[\sign(\hat r_{i,t-1}){=}\sign(r_{i,t})]
+  &&\text{(directional hit)},\label{eq:emu2}\\
+[E_\mu]_{i,3} &= \mathrm{std}(\mathcal{H}_{i,t})
+  &&\text{(error volatility)},\label{eq:emu3}\\
+[E_\mu]_{i,4} &= \mathrm{skew}(\mathcal{H}_{i,t})
+  &&\text{(error skewness)},\label{eq:emu4}\\
+[E_\mu]_{i,5} &= \mathrm{exkurt}(\mathcal{H}_{i,t})
+  &&\text{(error kurtosis)}.\label{eq:emu5}
+\end{align}
+\end{definition}
+
+Column~1 detects \emph{systematic} over- or under-prediction, with
+recent errors exponentially up-weighted.  Column~2 is a binary check:
+even if the magnitude is wrong, does the model at least get the
+\emph{sign} right?  Columns~3--5 characterise the \emph{shape} of
+the error distribution.  A model whose errors are wide (high~3),
+left-skewed (negative~4), and heavy-tailed (high~5) is
+systematically dangerous: it over-predicts returns with occasional
+large misses that the standard deviation underestimates.
+
+An analogous tensor $E_C\in\R^{n\times n\times 4}$ tracks
+correlation forecast errors per pair: EWMA bias, error std,
+skewness, and kurtosis.
+
+The last 26 weeks of GK volatility per asset are stored as
+$V\in\R^{n\times 26}$, providing the raw material for
+forward-looking covariance estimation.
+
+\placeholder{Figure~3: Time series of EWMA bias and error vol for
+5 representative tickers across the test period, showing
+regime-dependent variation (source: error histories).}
+
+%======================================================================
+\section{Confidence and Bayesian Posterior}\label{sec:confidence}
+%======================================================================
+
+\subsection{From error statistics to confidence}
+
+The five columns of $E_\mu$ answer a single question: \emph{how much
+should we trust the return forecast for asset $i$?}  We compress
+this into a scalar $\kappa_i\in(0,1]$ via four multiplicative
+penalty terms, each designed to penalise a specific failure mode.
+
+\textbf{Bias penalty.}
+Large systematic error should kill trust.  We normalise by the
+median absolute deviation (robust to outliers) and apply exponential
+decay:
+\begin{equation}\label{eq:sbias}
+s_i^{\mathrm{bias}} = \exp\!\big({-}|b_i|/\MAD(\bm{b})\big),
+\quad b_i=[E_\mu]_{i,1}.
+\end{equation}
+
+\textbf{Directional accuracy.}
+A linear penalty: correct sign gives $s^{\mathrm{dir}}=1$;
+a miss gives $0.7$.  Intentionally mild---one wrong sign
+shouldn't destroy confidence:
+\begin{equation}\label{eq:sdir}
+s_i^{\mathrm{dir}} = 0.3\,d_i + 0.7,
+\quad d_i=[E_\mu]_{i,2}\in\{0,1\}.
+\end{equation}
+
+\textbf{Dispersion penalty.}
+High error volatility $v_i=[E_\mu]_{i,3}$ is dangerous, and
+\emph{more} dangerous when the error distribution has fat tails
+(excess kurtosis $k_i=[E_\mu]_{i,5}$), because then $v_i$
+underestimates the true forecast risk:
+\begin{equation}\label{eq:sdisp}
+s_i^{\mathrm{disp}} = \exp\!\big({-}\delta_i/\mathrm{med}(\bm\delta)\big),
+\quad \delta_i = v_i(1{+}\tfrac{1}{2}\max(k_i,0)).
+\end{equation}
+
+\textbf{Skewness penalty.}
+Only \emph{negative} skew (over-prediction) is penalised---it is
+asymmetrically harmful for a long-biased portfolio:
+\begin{equation}\label{eq:sskew}
+s_i^{\mathrm{skew}} = \exp\!\big({-}\max(-\xi_i,0)\big),
+\quad \xi_i=[E_\mu]_{i,4}.
+\end{equation}
+
+\textbf{Composite confidence.}
+The four scores combine as a geometric mean:
+\begin{equation}\label{eq:kappa}
+\kappa_i = \clip\!\Big(
+  \prod_{k=1}^{4}(s_i^{(k)})^{1/4},\;10^{-4},\;1\Big).
+\end{equation}
+The multiplicative structure is deliberate.  An arithmetic mean
+would allow a good directional score to mask a terrible bias;
+the geometric mean ensures that \emph{any single} bad diagnostic
+substantially reduces $\kappa_i$.
+
+\textbf{Confidence-weighted returns.}
+Each forecast is shrunk toward the cross-sectional mean
+$\mu_0=n^{-1}\sum_j\hat\mu_j$:
+\begin{equation}\label{eq:mu_tilde}
+\tilde\mu_i = \kappa_i\hat\mu_i + (1{-}\kappa_i)\mu_0.
+\end{equation}
+When $\kappa_i=1$ we fully trust the forecast; when
+$\kappa_i\to 0$ the asset's expected return converges to the
+market average---maximum ignorance.  This is a form of
+James--Stein shrinkage~\cite{james1961}, which provably reduces
+expected squared error when $n\ge 3$.
+
+\placeholder{Figure~4: $\kappa$ evolution for 10 tickers over the
+test period (Plot~P13).}
+
+\placeholder{Figure~5: Average $\kappa$ and average predicted vol,
+dual axis (Plot~P14).}
+
+\subsection{Bayesian posterior}
+
+The confidence-weighted returns $\tilde\bmu$ are still point
+estimates.  We embed them in a Normal--Inverse-Wishart (NIW)
+conjugate model to produce a regularised mean and covariance.
+
+\begin{definition}[NIW prior]
+$\nu_0=n+2$ (the minimum for the IW mean to exist---a diffuse
+prior), $\tau_0=1$ (prior weight equals one observation),
+$\bm{m}_0=\mu_0\bm{1}$ (equal expected returns), and
+$\Psi_0=\max(\nu_0-n-1,1)\hat\Sigma_{\mathrm{hist}}$, where
+$\hat\Sigma_{\mathrm{hist}}$ is the historical covariance from
+the training period.
+\end{definition}
+
+Treating $\tilde\bmu$ as a single observation modulated by the
+confidence matrix $K=\diag(\bm\kappa)$, the posterior point
+estimates are:
+\begin{align}
+\bmu^B &= \frac{\tau_0\bm{m}_0 + K\tilde\bmu}{\tau_0+1},
+  \label{eq:muB}\\
+\Sigma^B &= \frac{\Psi_0 + \frac{\tau_0}{\tau_0+1}
+  (\tilde\bmu{-}\bm{m}_0)(\tilde\bmu{-}\bm{m}_0)^\top}
+  {\max(\nu_0{+}1{-}n{-}1,1)}.
+  \label{eq:SigB}
+\end{align}
+Both are projected to the nearest positive-definite matrix via
+eigenvalue clamping~\cite{higham2002}.
+
+The posterior mean $\bmu^B$ interpolates between the prior
+$\mu_0\bm{1}$ and the data $\tilde\bmu$, weighted by
+$\tau_0$ versus confidence.  When all $\kappa_i$ are small,
+$\bmu^B\approx\mu_0\bm{1}$---the model admits it knows nothing
+special.  When all $\kappa_i\approx 1$ and $\tau_0$ is small,
+$\bmu^B\approx\hat\bmu$---the data speaks.
+
+\subsection{Final covariance}
+
+EWMA volatility from $V$ with decay $\lambda_v=0.94$ and
+half-life $\approx 11$ weeks:
+$\hat\sigma_i = \sqrt{\sum_\ell w_\ell V_{i,\ell}^2}$.
+A regime adjustment inflates volatility when current levels
+exceed their own 26-week average:
+$\hat\sigma_i^{\mathrm{adj}}=\hat\sigma_i(1+0.5\max(r_i^{\mathrm{vol}}-1,0))$,
+where $r_i^{\mathrm{vol}}=\hat\sigma_i/\bar V_i$.  This is a
+one-sided adjustment: vol is only inflated, never deflated,
+biasing toward conservatism during stress.
+
+The final covariance blends Bayesian and forward-looking estimates:
+\begin{equation}\label{eq:Sigma_final}
+\Sigma_{\mathrm{final}} = \tfrac{1}{2}\Sigma^B
+  + \tfrac{1}{2} D_\sigma\hat C_{t+1}D_\sigma,
+\end{equation}
+where $D_\sigma=\diag(\hat\sigma_1^{\mathrm{adj}},\dots,
+\hat\sigma_n^{\mathrm{adj}})$ and $\hat C_{t+1}$ is the
+predicted correlation matrix.  The 50/50 blend avoids
+putting full weight on either the backward-looking Bayesian
+estimate or the forward-looking ML prediction.
+
+\placeholder{Figure~6: Heatmap of $\bmu^B$ (Plot~P15) and
+$\hat\sigma^{\mathrm{adj}}$ (Plot~P16) over the test period.}
+
+%======================================================================
+\section{Sharpe-Optimal Allocation}\label{sec:sharpe}
+%======================================================================
+
+\subsection{Why Sharpe maximisation?}
+
+Among the many portfolio objectives (minimum variance, maximum
+diversification, risk parity), Sharpe maximisation targets the
+tangent portfolio on the efficient frontier---the portfolio offering
+the highest expected excess return per unit of risk.  Under the
+assumption of a single risk-free rate, the tangent portfolio is the
+unique intersection of the capital market line with the frontier,
+and any investor's optimal allocation is a combination of the
+risk-free asset and the tangent portfolio (Tobin's two-fund
+separation theorem).
+
+\subsection{From fractional programme to QP sweep}
+
+The Sharpe ratio is:
+\begin{equation}\label{eq:SR}
+\mathrm{SR}(\bw) = \frac{\bw^\top\bmu^B - r_f}
+  {\sqrt{\bw^\top\Sigma_{\mathrm{final}}\bw}},
+\end{equation}
+where $r_f=r_f^{\mathrm{ann}}/52$ is the weekly risk-free rate.
+Maximising~\eqref{eq:SR} directly is a quasi-convex fractional
+programme.  The standard approach~\cite{cornuejols2007} is to note
+that for any $\gamma>0$, maximising the risk-adjusted return
+\begin{equation}\label{eq:J}
+J(\bw;\gamma) = (\bmu^B{-}r_f\bm{1})^\top\bw
+  - \gamma\,\bw^\top\Sigma_{\mathrm{final}}\bw
+\end{equation}
+subject to a constraint set yields a portfolio on the efficient
+frontier.  As $\gamma$ varies from $0$ to $\infty$, the solution
+traces the frontier from the maximum-return to the minimum-variance
+portfolio.  The $\gamma$ that achieves the highest Sharpe identifies
+the tangent portfolio.
+
+\subsection{KKT derivation}
+
+To build intuition, consider first the case with only a budget
+constraint $\bm{1}^\top\bw=1$.  The Lagrangian is:
+\begin{equation}\label{eq:lagrangian}
+\mathcal{L} = (\bmu^B{-}r_f\bm{1})^\top\bw
+  - \gamma\bw^\top\Sigma_{\mathrm{final}}\bw
+  - \lambda(\bm{1}^\top\bw-1).
+\end{equation}
+Setting $\nabla_{\bw}\mathcal{L}=0$:
+\begin{equation}\label{eq:foc}
+\bmu^B - r_f\bm{1} - 2\gamma\Sigma_{\mathrm{final}}\bw
+  - \lambda\bm{1} = 0.
+\end{equation}
+Solving for $\bw$:
+\begin{equation}\label{eq:w_closed}
+\bw = \frac{1}{2\gamma}\Sigma_{\mathrm{final}}^{-1}
+  \big(\bmu^B - r_f\bm{1} - \lambda\bm{1}\big).
+\end{equation}
+Substituting into $\bm{1}^\top\bw=1$ determines $\lambda$.
+Write $A=\bm{1}^\top\Sigma_{\mathrm{final}}^{-1}\bm{1}$ and
+$B=\bm{1}^\top\Sigma_{\mathrm{final}}^{-1}(\bmu^B-r_f\bm{1})$:
+\begin{equation}\label{eq:lambda}
+\lambda = \frac{B - 2\gamma}{A}.
+\end{equation}
+Substituting back:
+\begin{equation}\label{eq:w_final}
+\bw^*(\gamma) = \frac{1}{2\gamma}\Sigma_{\mathrm{final}}^{-1}
+  \Big(\bmu^B - r_f\bm{1}
+  - \frac{B-2\gamma}{A}\bm{1}\Big).
+\end{equation}
+This is the classical two-fund separation result.  The optimal
+portfolio is a linear combination of
+$\Sigma_{\mathrm{final}}^{-1}(\bmu^B-r_f\bm{1})$
+(the ``tangent direction'') and
+$\Sigma_{\mathrm{final}}^{-1}\bm{1}$
+(the minimum-variance direction), with mixing controlled by $\gamma$.
+
+\begin{remark}[Why the closed form is dangerous]
+Equation~\eqref{eq:w_final} inverts $\Sigma_{\mathrm{final}}$ and
+multiplies by $\bmu^B$.  If either contains noise, $\Sigma^{-1}$
+amplifies it---this is precisely the Michaud
+critique~\cite{michaud1989}.  Our remedy operates upstream:
+$\bmu^B$ has been shrunk by confidence-driven Bayesian updating
+(Section~\ref{sec:confidence}), and $\Sigma_{\mathrm{final}}$ is
+a regularised blend (Eq.~\ref{eq:Sigma_final}).  The optimiser
+sees de-noised inputs whose estimation error has been
+systematically attenuated.
+\end{remark}
+
+\subsection{Constrained programme}
+
+In practice we add leverage and concentration constraints that
+further regularise the solution.  The full programme for each
+$\gamma$ is:
+\begin{equation}\label{eq:qp_full}
+\bw^*(\gamma) = \arg\max_{\bw\in\R^n}\;J(\bw;\gamma)
+\end{equation}
+subject to:
+\begin{align}
+\bm{1}^\top\bw &= 1
+  &&\text{(fully invested)},\label{eq:c_budget}\\
+\|\bw\|_1 &\le 1.6
+  &&\text{(gross leverage)},\label{eq:c_lev}\\
+|w_i| &\le 0.20,\;\forall\,i
+  &&\text{(concentration)}.\label{eq:c_conc}
+\end{align}
+In long-only mode, $w_i\ge 0$ replaces the lower bound.  Each
+sub-problem is a convex QP ($\Sigma_{\mathrm{final}}\succ 0$)
+solved via SCS (\texttt{max\_iters}=5000).
+
+We sweep $\gamma$ over 50 log-spaced values in $[10^{-2},10^3]$
+and select:
+\begin{equation}\label{eq:gamma_star}
+\gamma^* = \arg\max_{\gamma\in\Gamma}\;\mathrm{SR}(\bw^*(\gamma)),
+\qquad \bw^*_{t+1} = \bw^*(\gamma^*).
+\end{equation}
+
+The leverage constraint $\|\bw\|_1\le 1.6$ permits moderate
+shorting (net leverage up to 1.6$\times$), while the box constraint
+$|w_i|\le 0.20$ prevents concentration in a single asset.  Together
+these act as implicit regularisers that prevent the optimiser from
+taking extreme positions even when one asset's $\mu^B_i$ is an
+outlier.
+
+\placeholder{Figure~7: Weight stacks (Plot~P07) and weight
+heatmap (Plot~P22) over the test period.}
+
+\placeholder{Figure~8: Gross and net leverage (Plot~P08).}
+
+\subsection{Volatility targeting}
+
+Post-allocation, portfolio returns are scaled to a target annualised
+volatility $\sigma^*=0.15$:
+\begin{equation}\label{eq:vt}
+r_t^{\mathrm{VT}} = r_t^{\mathrm{raw}}\cdot
+  \min\!\Big(\frac{\sigma^*}
+  {\max(\hat\sigma_t^{\mathrm{port}},10^{-6})},\;2.5\Big),
+\end{equation}
+where $\hat\sigma_t^{\mathrm{port}}=
+\mathrm{std}(\{r_s^{\mathrm{raw}}\}_{s=t-25}^{t})\sqrt{52}$.
+During calm periods leverage is increased (up to $2.5\times$);
+during crises exposure is cut.  All strategies (PRISM,
+equal-weight, SPY) are vol-fitted identically, enabling fair
+comparison at the same risk budget.
+
+%======================================================================
+\section{Optimal Transport Execution}\label{sec:ot}
+%======================================================================
+
+Given the current portfolio $\bw_t$ and target $\bw^*_{t+1}$, we
+must rebalance.  The na\"ive approach computes net trades
+$\Delta w_i=w_i^*-w_{t,i}$ and executes them independently.
+Optimal transport asks: \emph{what is the cheapest way to rearrange
+the current weights into the target, accounting for the pairwise
+structure of transaction costs?}
+
+\subsection{Kantorovich formulation}
+
+Normalise to probability distributions:
+$\bm{a}=|\bw_t|/\||\bw_t|\|_1$,
+$\bm{b}=|\bw^*|/\||\bw^*|\|_1$.  The cost matrix has entries
+$C_{ij}=|c_i|+|c_j|$ for $i\neq j$ (10\,bps per leg),
+$C_{ii}=0$.  The transport polytope is
+$\Pi(\bm{a},\bm{b})=\{T\ge 0:T\bm{1}=\bm{a},\,T^\top\bm{1}=\bm{b}\}$.
+The Kantorovich problem is:
+\begin{equation}\label{eq:kant}
+T^* = \arg\min_{T\in\Pi(\bm{a},\bm{b})}
+  \langle C,T\rangle.
+\end{equation}
+
+\subsection{Entropic regularisation and Sinkhorn}
+
+Adding $\varepsilon\sum_{ij}T_{ij}(\log T_{ij}-1)$ to the
+objective, with $\varepsilon=0.05\cdot\mathrm{median}(C)$, makes
+the problem strictly convex.
+
+\begin{proposition}[Solution structure]
+The first-order conditions give
+$C_{ij}+\varepsilon\log T_{ij}-f_i-g_j=0$, hence
+$T_{ij}^*=u_i K_{ij}v_j$ where $K_{ij}=e^{-C_{ij}/\varepsilon}$,
+$u_i=e^{f_i/\varepsilon}$, $v_j=e^{g_j/\varepsilon}$.
+The scaling vectors are determined by the marginal constraints.
+\end{proposition}
+
+The Sinkhorn algorithm finds $\bm{u},\bm{v}$ by alternating
+projections: $\bm{u}\leftarrow\bm{a}\oslash(K\bm{v})$,
+$\bm{v}\leftarrow\bm{b}\oslash(K^\top\bm{u})$.  Each iteration
+is a coordinate ascent step on the strictly concave dual; convergence
+is linear at rate $O(e^{-c/\varepsilon})$, typically 10--30
+iterations at tolerance $10^{-8}$.
+
+\textbf{Transaction cost.}
+$\mathcal{C}^*=\sum_{i\neq j}C_{ij}T^*_{ij}$.
+Net return: $r_t=(\bw^*)^\top\bm{r}_t-\mathcal{C}^*$.
+
+\textbf{Routing.}
+The net trades $w_i^*-w_{t,i}$ are identical to na\"ive
+rebalancing by the marginal constraints.  The value of OT is in
+the pairwise routing: $T^*_{ij}$ tells the execution desk which
+sells fund which buys, enabling pair or basket execution.
+
+A synthetic order book (mid = Close, spread $\approx$ GK vol
+$\times 0.1$, five depth levels) logs every flow $>10^{-8}$
+with estimated slippage.
+
+\placeholder{Figure~9: Net trades from the last rebalance
+(Plot~P31).  Turnover and TC bars (Plot~P09).}
+
+\placeholder{Table~3: Execution summary---avg turnover, avg TC,
+total fills, total slippage.}
+
+%======================================================================
+\section{Results}\label{sec:results}
+%======================================================================
+
+\subsection{Forecast quality}
+
+\placeholder{Table~4: Per-ticker return model $R^2$, MAE, DA.
+All tickers sorted by $R^2$.}
+
+\placeholder{Table~5: Aggregate pair model diagnostics---median
+$R^2$, DA, MAE across all pairs.}
+
+\placeholder{Figure~10: Return model $R^2$ and DA bar charts
+(Plots~P18, P19).}
+
+Key questions: Is $R^2$ positive for the majority?  Is DA
+$>0.5$?  Does stacking beat the best base learner?
+
+\subsection{Portfolio performance}
+
+\placeholder{Table~6: Full metrics for PRISM Raw, PRISM VT,
+PRISM @15\%, EW @15\%, SPY @15\%.  Columns: Total, Ann.\ Return,
+Ann.\ Vol, Sharpe, Sortino, MDD, Calmar, Win\%, Skew, Kurt.}
+
+\placeholder{Figure~11: Vol-matched cumulative returns at 15\%,
+log scale (Plot~P02).}
+
+\placeholder{Figure~12: Drawdowns (Plot~P03).  Rolling Sharpe
+(Plot~P04).  Monthly heatmap (Plot~P12).  Annual returns
+(Plot~P23).}
+
+\subsection{Confidence diagnostics}
+
+\placeholder{Figure~13: Avg $\kappa$ vs predicted vol (Plot~P14).
+Hypothesis: inverse relationship; $\kappa$ drops during GFC,
+COVID, 2022.}
+
+\placeholder{Figure~14: Rolling vol with 15\% target (Plot~P06).}
+
+\subsection{Ablation}
+
+\placeholder{Table~7: Sharpe, MDD, Calmar for: (a) raw Markowitz,
+(b) +confidence, (c) full pipeline.}
+
+%======================================================================
+\section{Discussion}\label{sec:discussion}
+%======================================================================
+
+\textbf{Error characterisation bridges forecasting and allocation.}
+The five-column $E_\mu$ forces the allocator to respect forecast
+uncertainty.  Assets with high bias, low directional accuracy, or
+fat-tailed errors are de-weighted automatically, without
+hand-tuned position limits.
+
+\textbf{The Sharpe derivation justifies the $\gamma$-sweep.}
+The KKT analysis shows that the unconstrained solution
+$\bw\propto\Sigma^{-1}\bmu$ is dangerously sensitive; the
+regularised inputs and convex constraints jointly tame this.
+The $\gamma$-sweep recovers the tangent portfolio on the
+regularised frontier.
+
+\textbf{Comparison with Ledoit--Wolf and Black--Litterman.}
+Ledoit--Wolf~\cite{ledoit2004} shrinks the covariance with a fixed
+intensity; PRISM adapts shrinkage per-asset via $\kappa_i$.
+Black--Litterman~\cite{black1992} requires the investor to specify
+views; PRISM derives its ``views'' from the ML forecasts and
+its ``view uncertainty'' from the error characterisation.
+
+\textbf{OT provides structural insight.}
+Beyond cost, the transport plan reveals which assets cross-fund each
+other---information invisible in net trades.
+
+\textbf{Limitations.}
+(1)~Static training (no walk-forward retraining).
+(2)~Synthetic order book.
+(3)~Meta-model error features zeroed at test time.
+(4)~Survivorship bias from a fixed universe.
+(5)~The blend weight $\zeta=0.5$ is not optimised.
+
+\textbf{Extensions.}
+Walk-forward retraining; macro features; conformal prediction
+intervals replacing the heuristic $\kappa$; GNN base learner on
+the correlation graph; multi-asset-class universes.
+
+%======================================================================
+\section{Conclusion}\label{sec:conclusion}
+%======================================================================
+
+PRISM demonstrates that the gap between ML forecasts and portfolio
+construction can be closed by treating prediction uncertainty as a
+first-class object.  The five-tensor interface between forecasting
+and allocation forces the optimiser to acknowledge what the model
+does and does not know.  Confidence-driven Bayesian shrinkage
+de-noises expected returns; robust covariance blending regularises
+the risk model; the KKT-derived $\gamma$-sweep identifies the
+tangent portfolio on the regularised frontier; and Sinkhorn optimal
+transport executes the result at minimum cost.  Every equation maps
+to the implemented codebase.
+
+%======================================================================
+\newpage
+{\small
+\begin{thebibliography}{99}
+
+\bibitem{markowitz1952}
+H.~Markowitz, ``Portfolio selection,''
+\textit{J.~Finance}, 7(1):77--91, 1952.
+
+\bibitem{sharpe1966}
+W.F.~Sharpe, ``Mutual fund performance,''
+\textit{J.~Business}, 39(1):119--138, 1966.
+
+\bibitem{merton1980}
+R.C.~Merton, ``On estimating the expected return on the market,''
+\textit{J.~Financial Econ.}, 8(4):323--361, 1980.
+
+\bibitem{michaud1989}
+R.O.~Michaud, ``The Markowitz optimization enigma,''
+\textit{Financial Analysts J.}, 45(1):31--42, 1989.
+
+\bibitem{best1991}
+M.J.~Best, R.R.~Grauer, ``On the sensitivity of mean-variance-efficient
+portfolios to changes in asset means,''
+\textit{Rev.~Financial Studies}, 4(2):315--342, 1991.
+
+\bibitem{chopra1993}
+V.K.~Chopra, W.T.~Ziemba, ``The effect of errors in means, variances,
+and covariances on optimal portfolio choice,''
+\textit{J.~Portfolio Management}, 19(2):6--11, 1993.
+
+\bibitem{demiguel2009}
+V.~DeMiguel, L.~Garlappi, R.~Uppal, ``Optimal versus naive
+diversification,''
+\textit{Rev.~Financial Studies}, 22(5):1915--1953, 2009.
+
+\bibitem{james1961}
+W.~James, C.~Stein, ``Estimation with quadratic loss,''
+\textit{Proc.~4th Berkeley Symp.}, 1:361--379, 1961.
+
+\bibitem{jorion1986}
+P.~Jorion, ``Bayes-Stein estimation for portfolio analysis,''
+\textit{J.~Financial Quant.~Anal.}, 21(3):279--292, 1986.
+
+\bibitem{ledoit2004}
+O.~Ledoit, M.~Wolf, ``A well-conditioned estimator for
+large-dimensional covariance matrices,''
+\textit{J.~Multivariate Anal.}, 88(2):365--411, 2004.
+
+\bibitem{black1992}
+F.~Black, R.~Litterman, ``Global portfolio optimization,''
+\textit{Financial Analysts J.}, 48(5):28--43, 1992.
+
+\bibitem{bental2009}
+A.~Ben-Tal, L.~El~Ghaoui, A.~Nemirovski,
+\textit{Robust Optimization}, Princeton Univ.~Press, 2009.
+
+\bibitem{gu2020empirical}
+S.~Gu, B.~Kelly, D.~Xiu, ``Empirical asset pricing via machine
+learning,''
+\textit{Rev.~Financial Studies}, 33(5):2223--2273, 2020.
+
+\bibitem{feng2020taming}
+G.~Feng, S.~Giglio, D.~Xiu, ``Taming the factor zoo,''
+\textit{J.~Finance}, 75(3):1327--1370, 2020.
+
+\bibitem{longin2001}
+F.~Longin, B.~Solnik, ``Extreme correlation of international equity
+markets,''
+\textit{J.~Finance}, 56(2):649--676, 2001.
+
+\bibitem{wolpert1992}
+D.H.~Wolpert, ``Stacked generalization,''
+\textit{Neural Networks}, 5(2):241--259, 1992.
+
+\bibitem{breiman1996}
+L.~Breiman, ``Stacked regressions,''
+\textit{Machine Learning}, 24(1):49--64, 1996.
+
+\bibitem{garman1980}
+M.B.~Garman, M.J.~Klass, ``On the estimation of security price
+volatilities from historical data,''
+\textit{J.~Business}, 53(1):67--78, 1980.
+
+\bibitem{cuturi2013}
+M.~Cuturi, ``Sinkhorn distances,''
+\textit{Advances in NIPS}, 26, 2013.
+
+\bibitem{peyre2019}
+G.~Peyr\'e, M.~Cuturi, ``Computational Optimal Transport,''
+\textit{Found.~Trends ML}, 11(5--6):355--607, 2019.
+
+\bibitem{blanchet2019}
+J.~Blanchet, K.~Murthy, ``Quantifying distributional model risk
+via optimal transport,''
+\textit{Math.~Oper.~Res.}, 44(2):565--600, 2019.
+
+\bibitem{esfahani2018}
+P.~Mohajerin~Esfahani, D.~Kuhn, ``Data-driven distributionally
+robust optimization using the Wasserstein metric,''
+\textit{Math.~Programming}, 171:115--166, 2018.
+
+\bibitem{cornuejols2007}
+G.~Cornuejols, R.~T\"ut\"unc\"u,
+\textit{Optimization Methods in Finance}, Cambridge Univ.~Press, 2007.
+
+\bibitem{higham2002}
+N.J.~Higham, ``Computing the nearest correlation matrix,''
+\textit{IMA J.~Numer.~Anal.}, 22(3):329--343, 2002.
+
+\bibitem{akiba2019optuna}
+T.~Akiba et al., ``Optuna: A next-generation hyperparameter
+optimization framework,''
+\textit{Proc.~25th ACM SIGKDD}, 2623--2631, 2019.
+
+\end{thebibliography}
+}
+
+\end{document}

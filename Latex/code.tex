@@ -1,0 +1,421 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\lstset{basicstyle=\ttfamily\small, breaklines=true, frame=single,
+  keywordstyle=\color{blue!70!black}, commentstyle=\color{green!50!black},
+  backgroundcolor=\color{gray!5}}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\placeholder}[1]{\textcolor{red!70!black}{\texttt{[#1]}}}
+
+\setlist[itemize]{nosep, left=0pt}
+\setlist[enumerate]{nosep, left=0pt}
+
+\title{\textbf{PRISM v3}\\[4pt]
+\large Pipeline Architecture and Model Documentation}
+\author{Benjamin Coriat\\McGill University --- ECSE 551}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Technical reference for the PRISM v3 codebase.
+Every section maps to a code cell; every hyperparameter is listed with its default.
+This document is the ``how''; for the ``why,'' see \textit{PRISM: Mathematical Foundations}.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Pipeline at a Glance}
+%======================================================================
+
+PRISM v3 lives in a single file (\code{prism\_v3.py}), fifteen cells
+running end-to-end from raw Yahoo Finance data to a fully diagnosed backtest.
+The flow is linear:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}r@{\;\;}l@{\qquad}r@{\;\;}l@{}}
+\toprule
+\textbf{Cell} & \textbf{What it does} & \textbf{Cell} & \textbf{What it does}\\
+\midrule
+1  & Install deps          & 9  & Training loop\\
+2  & Imports \& logging    & 10 & Predict + error tracking\\
+3  & Config dataclass      & 11 & Allocation + OT\\
+4  & Order book tracker    & 12 & Backtest engine\\
+5  & Download \& clean     & 13 & Vol-fit + metrics\\
+6  & Weekly resample + GK  & 14 & 31 diagnostic plots\\
+7  & Feature engineering   & 15 & Summary dump\\
+8  & Stacked ensemble      &    & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Everything downstream of cell~3 is parameterised by a single
+\code{@dataclass Config} (Section~\ref{sec:config}).
+No magic numbers live outside it.
+
+%======================================================================
+\section{Configuration}\label{sec:config}
+%======================================================================
+
+\begin{longtable}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Role}\\
+\midrule
+\endhead
+\multicolumn{3}{@{}l}{\textit{Date boundaries}}\\[2pt]
+\code{START\_DATE}       & 2003-01-01 & Download start\\
+\code{END\_DATE}         & 2025-12-31 & Download end\\
+\code{TRAIN\_END}        & 2011-12-31 & Last in-sample date\\
+\code{TEST\_START}       & 2012-01-01 & First OOS date\\[6pt]
+\multicolumn{3}{@{}l}{\textit{Feature construction}}\\[2pt]
+\code{WEEKLY\_FREQ}      & W-FRI     & Resample anchor\\
+\code{CORR\_WINDOW}      & 26        & Rolling correlation window (weeks)\\
+\code{RETURN\_LAGS}      & [1,2,4,8,12] & AR lag set\\
+\code{VOL\_WINDOW}       & 8         & Return-vol rolling window\\
+\code{VOL\_HISTORY}      & 26        & Depth $k$ of the $V$ matrix\\[6pt]
+\multicolumn{3}{@{}l}{\textit{Model training}}\\[2pt]
+\code{EWMA\_DECAY}       & 0.94      & Error-history decay\\
+\code{TUNING\_TRIALS}    & 10        & Optuna trials per model\\
+\code{TUNING\_TIMEOUT}   & 20\,s     & Optuna wall-clock cap\\
+\code{CV\_SPLITS}        & 5         & \code{TimeSeriesSplit} folds\\
+\code{TORCH\_EPOCHS}     & 100       & MLP max epochs\\
+\code{TORCH\_PATIENCE}   & 12        & MLP early-stop patience\\
+\code{TORCH\_BATCH}      & 64        & MLP batch size\\[6pt]
+\multicolumn{3}{@{}l}{\textit{Allocation}}\\[2pt]
+\code{LONG\_ONLY}        & False     & If true, $w_i\ge 0$\\
+\code{W\_MAX}            & 0.20      & Single-asset cap\\
+\code{L\_MAX}            & 1.6       & Gross leverage cap\\
+\code{SIGMA\_TARGET}     & 0.15      & Ann.\ vol target\\
+\code{RF\_ANNUAL}        & 0.045     & Risk-free rate\\[6pt]
+\multicolumn{3}{@{}l}{\textit{Execution}}\\[2pt]
+\code{DEFAULT\_TC\_BPS}  & 10        & Transaction cost (bps)\\
+\code{SINKHORN\_EPS}     & 0.05      & OT regularisation scale\\
+\code{SINKHORN\_ITER}    & 200       & Max Sinkhorn iterations\\
+\code{SINKHORN\_TOL}     & $10^{-8}$ & Convergence threshold\\
+\code{VOL\_LOOKBACK}     & 26        & Vol-target lookback\\
+\code{VOL\_CAP}          & 2.5       & Max vol-target leverage\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
+\section{Asset Universe}\label{sec:tickers}
+%======================================================================
+
+24 tickers covering global equity indices and commodities.
+Any ticker with fewer than 100 daily observations after cleaning is dropped,
+so $n$ is determined at runtime.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}llp{9.5cm}@{}}
+\toprule
+\textbf{Class} & \textbf{Region} & \textbf{Tickers}\\
+\midrule
+Equity & N.\ America  & \code{\^{}GSPC}, \code{\^{}NDX}, \code{\^{}DJI}, \code{\^{}RUT}, \code{\^{}GSPTSE}\\
+       & Europe       & \code{\^{}FTSE}, \code{\^{}GDAXI}, \code{\^{}STOXX50E}, \code{\^{}FCHI}, \code{\^{}IBEX}\\
+       & Asia-Pac     & \code{\^{}N225}, \code{\^{}HSI}, \code{\^{}AXJO}, \code{\^{}BSESN}, \code{\^{}NSEI}, \code{\^{}KS11}, \code{\^{}TWII}\\
+       & LatAm        & \code{\^{}BVSP}, \code{\^{}MXX}\\
+Vol    & N.\ America  & \code{\^{}VIX}\\
+Commodity & Global   & \code{GC=F}, \code{SI=F}, \code{CL=F}, \code{NG=F}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%======================================================================
+\section{Data Pipeline}\label{sec:data}
+%======================================================================
+
+\subsection{Download and cleaning (Cell 5)}
+
+Raw daily OHLCV comes from Yahoo Finance (\code{yfinance}, \code{auto\_adjust=False}).
+Cleaning is deliberately conservative:
+
+\begin{enumerate}
+\item Forward-fill Close.  Backfill Open/High/Low from Close if missing.  Volume defaults to~0.
+\item Drop any row that still has no Close.
+\item Discard any ticker with $\le 100$ surviving daily bars.
+\end{enumerate}
+
+\subsection{Weekly resampling (Cell 6)}
+
+Aggregation is anchored on Friday close:
+$O=\text{first}$, $H=\max$, $L=\min$, $C=\text{last}$, $V=\text{sum}$.
+Weekly returns and Garman--Klass volatility are computed per the
+definitions in \textit{Math Foundations}, Section~1.
+
+\subsection{SPY benchmark}
+
+SPY is downloaded separately (\code{auto\_adjust=True}), resampled to the same
+weekly grid, and aligned to the test-period index.  It is never part of the
+tradable universe.
+
+%======================================================================
+\section{Feature Engineering (Cell 7)}\label{sec:features}
+%======================================================================
+
+Two feature sets are built, one for each prediction task.
+
+\subsubsection*{Pair features (10-dim)}
+
+One row per unordered pair $(i,j)$ per week.
+Three lags of rolling correlation, both assets' returns and GK vols,
+a vol ratio, and a cross-vol term.
+Target: next-week correlation $\hat\rho_{ij,t+1}$.
+
+\subsubsection*{Return features (14-dim)}
+
+One row per ticker per week.
+Five lagged returns, three rolling means (4/12/26\,w),
+two rolling vols (8/12\,w), GK vol, vol-of-vol, and return acceleration.
+Target: next-week return $r_{i,t+1}$.
+
+Both feature sets are described equation-by-equation in
+\textit{Math Foundations}, Section~3.
+
+\placeholder{Insert feature dimension summary from execution output.}
+
+%======================================================================
+\section{Ensemble Architecture (Cell 8)}\label{sec:ensemble}
+%======================================================================
+
+\subsection{Base learners}
+
+Nine models, loosely ordered from simple to complex:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}clcl@{}}
+\toprule
+\# & \textbf{Model} & \textbf{Tuned?} & \textbf{Key defaults}\\
+\midrule
+1 & OLS         & No  & ---\\
+2 & Ridge       & Yes & $\alpha=1.0$; search $[10^{-4},100]$\\
+3 & Lasso       & Yes & $\alpha=0.001$, \code{max\_iter}=5000\\
+4 & ElasticNet  & Yes & $\alpha=0.001$, $\ell_1$-ratio$=0.5$\\
+5 & Random Forest & Yes & 250 trees, depth 6, min-leaf 5\\
+6 & Extra Trees & Yes & 250 trees, depth 8, min-leaf 3\\
+7 & GBM         & Yes & 300 rounds, depth 3, $\eta=0.05$\\
+8 & AdaBoost    & No  & 100 estimators, $\eta=0.05$\\
+9 & MLP         & No  & 3$\times$64 hidden, ReLU, dropout 0.1\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Tuning uses Optuna (TPE sampler, seed~42) with 10 trials or 20\,s
+wall-clock, whichever binds first.
+CV is \code{TimeSeriesSplit(5)}, scored by MSE.
+
+\subsection{MLP details}
+
+\begin{lstlisting}[language=Python, caption={MLP architecture (identical for pair and return tasks).}]
+layers = []
+in_dim = d   # 10 (pair) or 14 (return)
+for _ in range(3):
+    layers += [Linear(in_dim, 64), ReLU(), Dropout(0.1)]
+    in_dim = 64
+layers.append(Linear(64, 1))
+# Adam, lr=1e-3, weight_decay=1e-4, batch=64, patience=12
+\end{lstlisting}
+
+\subsection{Stacking}
+
+After the base learners are trained on the first 80\% of in-sample data,
+they predict on the held-out 20\% to produce a $2M$-dimensional meta-feature
+vector: each base model's prediction, plus its absolute error.
+A Ridge meta-model ($\alpha=1.0$) learns the final combination.
+
+At test time, the absolute-error half is zeroed out
+(the true target is unavailable), so the meta-model falls back
+to a learned linear blend of the raw predictions.
+
+\subsection{Training procedure}
+
+For each pair or ticker:
+
+\begin{enumerate}
+\item Filter to training period.  Require $\ge 50$ rows.
+\item 80/20 chronological split into base and meta sets.
+\item \code{StandardScaler} fit on the base set, applied to both.
+\item Train all 9 base learners (with Optuna where marked).
+\item Predict on the meta set $\to$ meta-features.
+\item Train Ridge meta-model.
+\item Store scaler + all models.
+\end{enumerate}
+
+Per-model diagnostics (MSE, MAE, $R^2$, directional accuracy) are
+written to \code{MODEL\_DIAG} for later plotting.
+
+%======================================================================
+\section{Prediction and Error Tracking (Cell 10)}\label{sec:predict}
+%======================================================================
+
+At each test date $t$, the trained ensembles produce:
+
+\begin{itemize}
+\item $\hat\mu_{t+1}\in\mathbb{R}^n$ (return predictions, unclipped).
+\item $\hat C_{t+1}\in\mathbb{R}^{n\times n}$ (correlation predictions, clipped to $[-1,1]$).
+\end{itemize}
+
+Error histories grow as lists per ticker/pair.  At each step we append
+the signed error $\varepsilon = \text{predicted} - \text{actual}$ and
+recompute the five error statistics (EWMA bias, std, skewness, kurtosis,
+directional hit) that feed the confidence module.
+The EWMA uses $\lambda=0.94$; higher moments come from \code{scipy.stats}
+on the full history.
+
+%======================================================================
+\section{Allocation Engine (Cell 11)}\label{sec:alloc}
+%======================================================================
+
+Five stages run in sequence for each test week.
+The math is in \textit{Math Foundations}, Sections 4--9; here we
+document the implementation.
+
+\begin{tcolorbox}[colback=gray!3, colframe=gray!50!black]
+\textbf{Stage 1: Confidence} (\code{compute\_conf}).
+Reads $E_\mu$, returns $\kappa\in\mathbb{R}^n$.
+
+\textbf{Stage 2: Bayesian posterior} (\code{bayes\_post}).
+NIW update $\to$ $(\mu^B,\Sigma^B)$.
+
+\textbf{Stage 3: Topological analysis} (\code{topo\_analysis}).
+Persistent homology on the correlation distance graph,
+spectral denoising $\to$ $C^{\mathrm{spec}}$.
+
+\textbf{Stage 4: Robust covariance} (\code{robust\_cov}).
+EWMA vol from $V$, regime adjustment, blend with $\Sigma^B$
+$\to$ $\Sigma_{\mathrm{final}}$.
+
+\textbf{Stage 5: Sharpe allocation} (\code{sharpe\_alloc}).
+50-point $\gamma$-sweep, CVXPY + SCS (\code{max\_iters}=5000),
+pick $\gamma^*$ by Sharpe $\to$ $\bm{w}^*$.
+\end{tcolorbox}
+
+\textbf{Nearest-PD projection.}
+Called after every covariance construction:
+eigendecompose, clamp eigenvalues $\ge 10^{-8}$, reconstruct and symmetrise.
+If the minimum eigenvalue is still below $10^{-8}$, add a diagonal ridge.
+
+\textbf{Fallback.}
+If any stage throws, the allocator returns equal-weight
+($\bm{w}=n^{-1}\bm{1}$) and logs a warning.
+
+%======================================================================
+\section{Order Book Tracker (Cell 4)}\label{sec:ob}
+%======================================================================
+
+This is a simulation layer, not a live feed.  It reconstructs synthetic
+L2 snapshots from weekly OHLCV so that the backtest can estimate
+realistic spread and slippage costs.
+
+\textbf{Snapshot construction.}
+Mid = Friday close.
+Spread $\approx \max(\hat\sigma^{\mathrm{GK}}\times 0.1,\;10^{-4})$.
+Five depth levels with geometrically decaying size
+($1000\times 0.8^\ell$, $\ell=0,\dots,4$).
+
+\textbf{Rebalance logging.}
+Each off-diagonal OT flow $T_{ij}^*>10^{-8}$ is logged as a fill,
+recording: date, sell/buy assets, flow \%, notional, spread, slippage.
+Weekly summaries (fill count, total notional, total slippage, turnover~\%)
+feed the diagnostic plots.
+
+%======================================================================
+\section{Backtesting Engine (Cell 12)}\label{sec:backtest}
+%======================================================================
+
+One iteration per test week:
+
+\begin{enumerate}
+\item Retrieve actual weekly returns.
+\item Build order book snapshot.
+\item Run the five-stage allocation pipeline.
+\item Compute OT transport plan and transaction cost $\mathcal{C}^*$.
+\item Log the rebalance.
+\item Raw return: $r^{\mathrm{raw}}=(\bm{w}^*)^\top\bm{r}-\mathcal{C}^*$.
+\item Vol-target scaling (lookback 26\,w, cap $2.5\times$).
+\item Record diagnostics: weights, $\kappa$, $\mu^B$, $\sigma$, leverage, turnover.
+\end{enumerate}
+
+%======================================================================
+\section{Vol-Fitting and Metrics (Cell 13)}\label{sec:metrics}
+%======================================================================
+
+Three strategies --- PRISM, equal-weight, and SPY --- are all vol-fitted to
+15\% annualised using the same mechanism (26-week lookback, cap $3.0\times$).
+This gives a fair apples-to-apples comparison at identical risk budgets.
+
+\textbf{Metrics computed} (per strategy):
+total return, annualised return, annualised vol, Sharpe, Sortino,
+max drawdown, Calmar, win rate, skewness, kurtosis.
+
+%======================================================================
+\section{Diagnostic Plots (Cell 14)}\label{sec:plots}
+%======================================================================
+
+31 plots, grouped thematically.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}rll@{}}
+\toprule
+& \textbf{Plot} & \textbf{Shows}\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{Performance}}\\
+P01 & Cumulative returns       & All strategies, log scale\\
+P02 & Vol-matched comparison   & PRISM / EW / SPY at 15\%\\
+P03 & Drawdown panels          & Three strategies stacked\\
+P04 & Rolling Sharpe (26\,w)   & \\
+P05 & Rolling return (52\,w)   & \\
+P06 & Rolling vol + target     & 26\,w realised vs.\ 15\% line\\[4pt]
+\multicolumn{3}{@{}l}{\textit{Portfolio composition}}\\
+P07 & Weight stacks            & Long / short, stacked area\\
+P08 & Leverage                 & Gross and net\\
+P09 & Turnover + TC            & Weekly bars\\
+P22 & Weight heatmap           & Ticker $\times$ time\\[4pt]
+\multicolumn{3}{@{}l}{\textit{Return analysis}}\\
+P10 & Return distributions     & Histogram overlay\\
+P11 & QQ plots                 & vs.\ normal\\
+P12 & Monthly heatmap          & Calendar grid\\
+P23 & Annual returns           & Grouped bar chart\\
+P24 & Underwater plot          & \\[4pt]
+\multicolumn{3}{@{}l}{\textit{Model diagnostics}}\\
+P13 & $\kappa$ evolution       & 10 representative tickers\\
+P14 & Avg $\kappa$ + predicted vol & Dual-axis\\
+P15 & $\mu^B$ heatmap          & \\
+P16 & $\sigma$ heatmap         & \\
+P17 & Final correlation + $\kappa$ & Last test date snapshot\\
+P18 & Return $R^2$ per ticker  & \\
+P19 & Return DA per ticker     & \\
+P20 & Meta-model weights       & Ridge coefficients\\
+P21 & Pair model diagnostics   & $R^2$, DA, MAE\\[4pt]
+\multicolumn{3}{@{}l}{\textit{Market and execution}}\\
+P25 & Average GK vol           & Cross-sectional\\
+P26 & All assets (log)         & Normalised to 1\\
+P27 & Individual asset panels  & Small multiples\\
+P28 & Strategy vs.\ benchmarks & At 15\% vol\\
+P29 & Order book summary       & Fill counts, notional\\
+P30 & Spread history           & \\
+P31 & Last trades              & Net flows, final rebalance\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

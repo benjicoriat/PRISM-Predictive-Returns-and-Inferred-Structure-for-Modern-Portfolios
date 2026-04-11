@@ -1,0 +1,616 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{algorithm,algorithmic}
+\usepackage{bm}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\tr}{\mathrm{tr}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\sign}{\mathrm{sign}}
+\newcommand{\MAD}{\mathrm{MAD}}
+\newcommand{\EWMA}{\mathrm{EWMA}}
+\newcommand{\clip}{\mathrm{clip}}
+\newcommand{\bw}{\bm{w}}
+\newcommand{\bmu}{\bm{\mu}}
+\newcommand{\bkappa}{\bm{\kappa}}
+
+\title{\textbf{PRISM: Mathematical Foundations}\\[6pt]
+\large Sharpe--Optimal Allocation under Forecast Uncertainty\\
+with Kantorovich Order Flow}
+\author{Benjamin Coriat\\McGill University --- ECSE 551}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We derive from first principles the optimal portfolio allocation rule when the investor
+possesses \emph{noisy} return and covariance forecasts together with a full characterisation
+of the forecast errors.  The key idea is that the classical mean--variance programme
+is mis-specified when the inputs are themselves uncertain: we show how to build a
+\emph{confidence-weighted} expected return vector and a \emph{Bayesian-blended}
+covariance matrix, then prove that the resulting Sharpe-maximising programme is a
+second-order cone programme.  Finally, we derive the Kantorovich optimal transport
+plan that converts the current portfolio into the target at minimum transaction cost,
+and show that its entropically regularised form admits a closed-form Sinkhorn iteration.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Setup and Data}\label{sec:setup}
+%======================================================================
+
+Fix a universe of $n$ assets and a weekly time index $t$ (Friday close).
+
+\begin{definition}[Returns and volatility]\label{def:basics}
+For asset $i$ at week $t$:
+\begin{align}
+r_{i,t} &:= \frac{P_{i,t}}{P_{i,t-1}} - 1 && \text{(simple weekly return)},\\[4pt]
+\hat\sigma_{i,t}^{\mathrm{GK}} &:= \sqrt{\max\!\Big(\tfrac12(\ln H - \ln L)^2
+  - (2\ln 2-1)(\ln C - \ln O)^2,\;0\Big)} && \text{(Garman--Klass vol)}.
+\end{align}
+\end{definition}
+
+\begin{remark}[Why Garman--Klass?]
+Close-to-close volatility uses only two prices per period.  The GK estimator
+uses all four OHLC prices; under driftless GBM one can show
+$\Var(\hat\sigma_{\mathrm{GK}}^2)\approx 0.273\,\sigma^4$,
+roughly $7.3\times$ more efficient.  Better volatility estimates
+feed directly into a better covariance matrix, so this matters for allocation.
+\end{remark}
+
+\begin{definition}[Rolling correlation]
+With window $W=26$,
+\[
+\hat\rho_{ij,t} := \frac{\sum_{s=t-W+1}^{t}(r_{i,s}-\bar r_i)(r_{j,s}-\bar r_j)}
+  {\sqrt{\sum_s(r_{i,s}-\bar r_i)^2\sum_s(r_{j,s}-\bar r_j)^2}}.
+\]
+Collect these into the correlation matrix $\hat C_t\in\R^{n\times n}$.
+\end{definition}
+
+%======================================================================
+\section{The Forecasting Step (Black Box)}\label{sec:forecast}
+%======================================================================
+
+A stacked ensemble regressor (Ridge, GBM, Random Forest, MLP, etc.)
+produces, at each date $t$:
+\begin{enumerate}
+\item A predicted return vector $\hat\bmu_{t+1}\in\R^n$.
+\item A predicted correlation matrix $\hat C_{t+1}\in\R^{n\times n}$.
+\end{enumerate}
+The details of the ensemble are not the focus here.  What matters is that
+these forecasts are \emph{imperfect}, and we have a way to measure how imperfect
+they are --- the \textbf{error characterisation} described next.
+
+%======================================================================
+\section{Error Characterisation}\label{sec:error}
+%======================================================================
+
+For each asset $i$, define the signed forecast error at past date $s$:
+\[
+\varepsilon_{i,s} := \hat r_{i,s}^{\mathrm{pred}} - r_{i,s+1}.
+\]
+We maintain a running history $\mathcal{H}_{i,t}=\{\varepsilon_{i,s}\}_{s<t}$
+and compute five statistics that together describe \emph{how trustworthy}
+the forecast for asset~$i$ is.
+
+\begin{definition}[Return error matrix $E_\mu\in\R^{n\times 5}$]\label{def:Emu}
+\begin{align}
+[E_\mu]_{i,1} &:= \sum_s w_s\,\varepsilon_{i,s}
+  &&\text{EWMA bias ($\lambda=0.94$)},\label{eq:bias}\\
+[E_\mu]_{i,2} &:= \mathbf{1}[\sign(\hat r_{i,t-1})=\sign(r_{i,t})]
+  &&\text{last directional hit},\label{eq:dir}\\
+[E_\mu]_{i,3} &:= \mathrm{std}(\mathcal{H}_{i,t})
+  &&\text{error volatility},\label{eq:evol}\\
+[E_\mu]_{i,4} &:= \mathrm{skew}(\mathcal{H}_{i,t})
+  &&\text{error skewness},\label{eq:eskew}\\
+[E_\mu]_{i,5} &:= \mathrm{exkurt}(\mathcal{H}_{i,t})
+  &&\text{error excess kurtosis}.\label{eq:ekurt}
+\end{align}
+\end{definition}
+
+\begin{remark}[Intuition]
+Column~1 tells us whether the model is \emph{systematically} over- or under-predicting
+(and recent errors are up-weighted).
+Column~2 says whether it at least gets the \emph{sign} right.
+Columns~3--5 describe the \emph{shape} of the error distribution: a wide, left-skewed,
+heavy-tailed error distribution means we should trust the forecast less.
+\end{remark}
+
+Similarly, for each pair $(i,j)$ we track $\varepsilon_{ij,s}^C:=\hat\rho_{ij,s}^{\mathrm{pred}}-\hat\rho_{ij,s+1}$
+and store bias, std, skewness, kurtosis in a tensor $E_C\in\R^{n\times n\times 4}$.
+
+Finally, the last $k=26$ weeks of GK volatilities are stored as $V\in\R^{n\times k}$.
+
+%======================================================================
+\section{From Error Statistics to Confidence}\label{sec:confidence}
+%======================================================================
+
+The central question: given $E_\mu$, how should we \emph{down-weight}
+the return forecasts we don't trust?
+
+\subsection{Designing the confidence score}
+
+We want a score $\kappa_i\in(0,1]$ for each asset, where $\kappa_i=1$ means
+``fully trust the forecast'' and $\kappa_i\approx 0$ means ``ignore it.''
+We build $\kappa_i$ multiplicatively from four penalty terms, each in $(0,1]$.
+
+\begin{tcolorbox}[colback=blue!3, colframe=blue!40!black, title=Design principle]
+Each penalty is an exponential decay in a normalised badness measure.
+If an error statistic is at the \emph{median} level, the penalty is moderate;
+if it is many MADs above median, the penalty drives $\kappa_i$ toward zero.
+\end{tcolorbox}
+
+\begin{definition}[Component scores]\label{def:scores}
+Let $b_i:=[E_\mu]_{i,1}$, $d_i:=[E_\mu]_{i,2}$, $v_i:=[E_\mu]_{i,3}$,
+$\xi_i:=[E_\mu]_{i,4}$, $\kappa_i^{\mathrm{ex}}:=\max([E_\mu]_{i,5},0)$.
+
+\medskip\noindent
+\textbf{1.\ Bias penalty.}  Large systematic bias $\Rightarrow$ low trust:
+\begin{equation}\label{eq:sbias}
+s_i^{\mathrm{bias}} := \exp\!\bigg(-\alpha_1\,\frac{|b_i|}{\MAD(\bm{b})}\bigg),
+\qquad \MAD(\bm{b}):=\max\!\big(\mathrm{median}(|b_j-\mathrm{median}(\bm{b})|),\,10^{-8}\big).
+\end{equation}
+\emph{Why MAD?}  The median absolute deviation is robust to outliers,
+so one rogue asset doesn't inflate the scale and mask problems in others.
+
+\medskip\noindent
+\textbf{2.\ Directional accuracy.}  If the model can't even get the sign right, down-weight:
+\begin{equation}\label{eq:sdir}
+s_i^{\mathrm{dir}} := \beta_1\, d_i + (1-\beta_1),
+\qquad \beta_1=0.3.
+\end{equation}
+This is simply a linear interpolation: a correct sign gives $s^{\mathrm{dir}}=1$,
+a miss gives $1-\beta_1=0.7$.  The penalty is intentionally mild because a single
+wrong sign shouldn't nuke the confidence.
+
+\medskip\noindent
+\textbf{3.\ Dispersion penalty.}  High error volatility, especially combined with fat tails,
+means the forecast is unreliable:
+\begin{equation}\label{eq:sdisp}
+\delta_i := v_i\,(1+\gamma_1\kappa_i^{\mathrm{ex}}),\qquad
+s_i^{\mathrm{disp}} := \exp\!\bigg(-\alpha_2\,\frac{\delta_i}{\mathrm{median}(\bm\delta)}\bigg).
+\end{equation}
+The term $\gamma_1\kappa_i^{\mathrm{ex}}$ inflates the effective dispersion when the error
+distribution has excess kurtosis --- because fat tails mean the standard deviation
+\emph{underestimates} the true forecast risk.
+
+\medskip\noindent
+\textbf{4.\ Skewness penalty.}  Negatively skewed errors (model over-predicts) are
+penalised:
+\begin{equation}\label{eq:sskew}
+s_i^{\mathrm{skew}} := \exp\!\big(-\alpha_3\max(-\xi_i,0)\big).
+\end{equation}
+Only \emph{negative} skew is penalised: over-prediction is worse than under-prediction
+for a long-biased portfolio.
+\end{definition}
+
+\begin{definition}[Composite confidence]\label{def:kappa}
+\begin{equation}\label{eq:kappa}
+\kappa_i := \clip\!\bigg(
+  \prod_{k=1}^{4}\big(s_i^{(k)}\big)^{\omega_k},\;10^{-4},\;1\bigg),
+\qquad \omega_k=\tfrac14.
+\end{equation}
+\end{definition}
+
+\begin{remark}[Why geometric mean?]
+A multiplicative structure means that \emph{any single} bad signal can substantially
+reduce confidence.  If we used an arithmetic mean, a terrible bias score could be
+offset by a good directional score, which is undesirable: we want a conjunction
+(``trust only if \emph{all} diagnostics are acceptable'').
+\end{remark}
+
+\subsection{Confidence-weighted returns}
+
+Armed with $\kappa_i$, we shrink each forecast toward the cross-sectional mean:
+\begin{equation}\label{eq:mu_tilde}
+\tilde\mu_i := \kappa_i\,\hat\mu_i + (1-\kappa_i)\,\mu_0,
+\qquad \mu_0:=\frac{1}{n}\sum_{j=1}^n \hat\mu_j.
+\end{equation}
+
+\begin{remark}[Interpretation]
+When $\kappa_i=1$, we fully believe the forecast.
+When $\kappa_i\to 0$, the asset's expected return is pulled to the market average,
+reflecting maximum uncertainty (``we know nothing special about this asset'').
+This is a form of \emph{James--Stein shrinkage}: it provably reduces expected
+squared error relative to the raw forecasts when $n\ge 3$.
+\end{remark}
+
+%======================================================================
+\section{Bayesian Posterior Estimation}\label{sec:bayes}
+%======================================================================
+
+The confidence-weighted returns $\tilde\bmu$ are a point estimate.
+We now embed them in a Bayesian framework to produce a \emph{regularised}
+mean and covariance that account for estimation uncertainty.
+
+\subsection{Prior specification}
+
+\begin{assumption}[Normal--Inverse-Wishart conjugate prior]\label{ass:niw}
+\begin{align}
+\Sigma &\sim \mathcal{IW}(\nu_0,\Psi_0), &
+  \nu_0 &= n+2,\\
+\bmu\mid\Sigma &\sim \mathcal{N}(\bm{m}_0,\,\tau_0^{-1}\Sigma), &
+  \tau_0 &= 1,\quad \bm{m}_0=\mu_0\bm{1}.
+\end{align}
+The scale matrix is $\Psi_0=\max(\nu_0-n-1,1)\,\hat\Sigma_{\mathrm{hist}}$,
+where $\hat\Sigma_{\mathrm{hist}}$ is the historical sample covariance
+on the training period.
+\end{assumption}
+
+\begin{remark}[Why these choices?]
+Setting $\nu_0=n+2$ gives the Inverse-Wishart the minimum number of
+degrees of freedom for which the mean exists --- i.e.\ a \emph{diffuse}
+prior that doesn't impose strong beliefs.
+$\tau_0=1$ means the prior on $\bmu$ has the same weight as a single
+observation, so the data quickly dominates.
+$\bm{m}_0=\mu_0\bm{1}$ centres the prior on equal expected returns
+(maximum ignorance).
+\end{remark}
+
+\subsection{Posterior update}
+
+We treat the confidence-weighted vector $\tilde\bmu$ as a single
+``observation'' from $\mathcal{N}(\bmu,\Sigma)$, but re-weighted by the
+confidence matrix $K=\diag(\kappa_1,\dots,\kappa_n)$.
+
+\begin{proposition}[Posterior point estimates]\label{prop:posterior}
+The posterior mean and covariance mode are:
+\begin{align}
+\bmu_{t+1}^B &= \frac{\tau_0\,\bm{m}_0 + K\tilde\bmu}{\tau_0+1},\label{eq:muB}\\[6pt]
+\Sigma_{t+1}^B &= \frac{\Psi_n}{\max(\nu_0+1-n-1,\,1)},\label{eq:SigB}
+\end{align}
+where $\Psi_n:=\Psi_0+\frac{\tau_0}{\tau_0+1}(\tilde\bmu-\bm{m}_0)(\tilde\bmu-\bm{m}_0)^\top$.
+\end{proposition}
+
+\begin{proof}[Derivation]
+Under the NIW conjugate model with prior $(\bm{m}_0,\tau_0,\Psi_0,\nu_0)$,
+the standard update after observing data $\bar{\bm{x}}$ with effective
+sample size $n_{\mathrm{eff}}$ gives posterior parameters
+$\bm{m}_n = \frac{\tau_0 \bm{m}_0 + n_{\mathrm{eff}}\bar{\bm{x}}}{\tau_0+n_{\mathrm{eff}}}$.
+Here we have a single ``observation'' ($n_{\mathrm{eff}}=1$) but it is
+modulated by the confidence matrix $K$: assets with $\kappa_i\approx 1$
+contribute their forecast at full strength, while low-confidence assets
+are effectively shrunk toward the prior mean $\mu_0$.
+
+The scale matrix update
+$\Psi_n = \Psi_0 + \frac{\tau_0}{\tau_0+1}(\tilde\bmu-\bm{m}_0)(\tilde\bmu-\bm{m}_0)^\top$
+is the standard NIW scatter update: it inflates the posterior covariance
+in directions where the observation deviates from the prior mean,
+reflecting the additional uncertainty from disagreement between
+prior and data.
+
+The result is projected onto the positive-definite cone via
+Higham alternating projections (nearest correlation/covariance matrix).
+\end{proof}
+
+%======================================================================
+\section{Robust Covariance Construction}\label{sec:cov}
+%======================================================================
+
+The Bayesian posterior $\Sigma_{t+1}^B$ handles mean uncertainty.
+We also need a \emph{forward-looking} covariance from the predicted
+correlation matrix and recent volatilities.
+
+\subsection{EWMA volatility}
+
+From the volatility history $V\in\R^{n\times k}$ ($k=26$), with decay $\lambda_v=0.94$:
+\begin{equation}\label{eq:ewma_vol}
+\hat\sigma_i := \sqrt{\sum_{\ell=1}^k w_\ell\,V_{i,\ell}^2},
+\qquad w_\ell = \frac{(1-\lambda_v)\lambda_v^{k-\ell}}{1-\lambda_v^k}.
+\end{equation}
+
+\begin{remark}
+The EWMA weights recent observations exponentially more.
+$\lambda_v=0.94$ gives a half-life of about $\ln 2/\ln(1/0.94)\approx 11$ weeks,
+so the estimate adapts to regime changes within a quarter.
+\end{remark}
+
+\subsection{Regime adjustment}
+
+If current vol is elevated relative to its own $k$-week average,
+we further inflate it:
+\begin{equation}\label{eq:regime}
+\hat\sigma_i^{\mathrm{adj}} := \hat\sigma_i\cdot\big(1+\eta\max(r_i^{\mathrm{vol}}-1,0)\big),
+\qquad r_i^{\mathrm{vol}}:=\hat\sigma_i/\bar V_i,\quad \eta=0.5.
+\end{equation}
+This is a simple asymmetric adjustment: vol is only inflated (never deflated),
+which biases toward conservatism during stress.
+
+\subsection{Final blended covariance}
+
+The forward-looking covariance uses the predicted correlation
+$\hat C_{t+1}$ and adjusted vols:
+\begin{equation}
+\Sigma^{\mathrm{fwd}} := D_\sigma\,\hat C_{t+1}\,D_\sigma,
+\qquad D_\sigma=\diag(\hat\sigma_1^{\mathrm{adj}},\dots,\hat\sigma_n^{\mathrm{adj}}).
+\end{equation}
+
+We blend with the Bayesian posterior:
+\begin{equation}\label{eq:Sigma_final}
+\boxed{\Sigma_{\mathrm{final}} := \zeta\,\Sigma_{t+1}^B + (1-\zeta)\,\Sigma^{\mathrm{fwd}},
+\qquad \zeta=0.5.}
+\end{equation}
+
+This is a convex combination of two PSD matrices, hence PSD.
+We project to strictly PD (eigenvalue floor) for numerical stability.
+
+%======================================================================
+\section{Sharpe-Optimal Allocation}\label{sec:sharpe}
+%======================================================================
+
+\subsection{The classical Markowitz problem and its flaw}
+
+The textbook approach maximises the Sharpe ratio:
+\begin{equation}\label{eq:SR}
+\mathrm{SR}(\bw) := \frac{\bw^\top\bmu-r_f}{\sqrt{\bw^\top\Sigma\bw}}.
+\end{equation}
+
+The well-known difficulty is that the solution $\bw^*\propto\Sigma^{-1}\bmu$
+is \emph{extremely sensitive} to errors in $\bmu$ and $\Sigma$.
+Small perturbations in the inputs produce wildly different portfolios
+(Michaud, 1989).
+
+\begin{tcolorbox}[colback=green!3, colframe=green!40!black, title=Our remedy]
+By replacing $\bmu$ with the confidence-shrunk, Bayesian-updated
+$\bmu_{t+1}^B$ and $\Sigma$ with the blended $\Sigma_{\mathrm{final}}$,
+we have already regularised the inputs.  The optimiser now sees
+``de-noised'' inputs whose estimation error has been attenuated.
+This is the payoff of Sections~\ref{sec:confidence}--\ref{sec:cov}.
+\end{tcolorbox}
+
+\subsection{The constrained programme}
+
+We solve, for each risk-aversion $\gamma>0$:
+\begin{equation}\label{eq:qp}
+\bw^*(\gamma) := \arg\max_{\bw\in\R^n}\;
+  \underbrace{(\bmu_{t+1}^B - r_f\bm{1})^\top\bw}_{\text{expected excess return}}
+  -\;\gamma\underbrace{\bw^\top\Sigma_{\mathrm{final}}\bw}_{\text{portfolio variance}}
+\end{equation}
+subject to
+\begin{align}
+\bm{1}^\top\bw &= 1 && \text{(fully invested)},\label{eq:budget}\\
+\|\bw\|_1 &\le L_{\max}=1.6 && \text{(gross leverage cap)},\label{eq:lev}\\
+|w_i| &\le w_{\max}=0.20,\;\forall\,i && \text{(concentration limit)}.\label{eq:conc}
+\end{align}
+
+\begin{remark}[Why not maximise SR directly?]
+Maximising $\mathrm{SR}(\bw)$ is a fractional programme.
+The standard trick (Cornuejols \& T\"ut\"unc\"u) is to fix the denominator
+and sweep $\gamma$.  For each $\gamma$, \eqref{eq:qp} is a convex QP
+(since $\Sigma_{\mathrm{final}}\succ 0$), solvable in milliseconds by SCS.
+We then pick the $\gamma^*$ that achieves the highest ex-ante Sharpe:
+\begin{equation}
+\gamma^* := \arg\max_{\gamma\in\Gamma}\;\mathrm{SR}(\bw^*(\gamma)),
+\qquad \bw_{t+1}^* := \bw^*(\gamma^*).
+\end{equation}
+In practice we use 50 log-spaced values $\gamma\in[10^{-2},10^3]$.
+\end{remark}
+
+\subsection{Deriving the KKT conditions}
+
+The Lagrangian of \eqref{eq:qp} (ignoring the $\ell_1$ and box constraints
+for clarity) is
+\begin{equation}
+\mathcal{L}(\bw,\lambda) = (\bmu_{t+1}^B-r_f\bm{1})^\top\bw
+  -\gamma\bw^\top\Sigma_{\mathrm{final}}\bw - \lambda(\bm{1}^\top\bw-1).
+\end{equation}
+Setting $\nabla_{\bw}\mathcal{L}=0$:
+\begin{equation}
+\bmu_{t+1}^B - r_f\bm{1} - 2\gamma\Sigma_{\mathrm{final}}\bw - \lambda\bm{1} = 0
+\quad\Longrightarrow\quad
+\bw = \frac{1}{2\gamma}\Sigma_{\mathrm{final}}^{-1}(\bmu_{t+1}^B - r_f\bm{1} - \lambda\bm{1}).
+\end{equation}
+Substituting into $\bm{1}^\top\bw=1$ and solving for $\lambda$:
+\begin{equation}
+\lambda = \frac{\bm{1}^\top\Sigma_{\mathrm{final}}^{-1}(\bmu_{t+1}^B-r_f\bm{1})
+  - 2\gamma}{\bm{1}^\top\Sigma_{\mathrm{final}}^{-1}\bm{1}}.
+\end{equation}
+
+This is the classical two-fund separation result.  The additional
+$\ell_1$ and box constraints are handled by the QP solver (they add
+inequality constraints and corresponding dual variables, but the
+problem remains convex).
+
+%======================================================================
+\section{Volatility Targeting}\label{sec:voltarget}
+%======================================================================
+
+After allocation, we scale returns to a target annualised volatility
+$\sigma^*=0.15$ (15\%):
+\begin{equation}\label{eq:vt}
+r_t^{\mathrm{VT}} := r_t^{\mathrm{raw}}\cdot\ell_t,
+\qquad \ell_t:=\min\!\bigg(\frac{\sigma^*}
+  {\hat\sigma_t^{\mathrm{port}}},\;\ell_{\max}\bigg),
+\end{equation}
+where $\hat\sigma_t^{\mathrm{port}}=\mathrm{std}(\{r_s^{\mathrm{raw}}\}_{s=t-25}^t)\cdot\sqrt{52}$
+and $\ell_{\max}=2.5$.
+
+\begin{remark}
+This ensures the backtest is comparable across regimes.
+During calm periods, leverage is increased (up to $2.5\times$);
+during crises, exposure is cut.  The 26-week lookback means the
+adjustment is smooth and avoids whipsawing.
+\end{remark}
+
+%======================================================================
+\section{Optimal Transport for Order Execution}\label{sec:ot}
+%======================================================================
+
+We now have a target portfolio $\bw_{t+1}^*$ and a current portfolio $\bw_t$.
+The rebalancing trade $\Delta\bw=\bw_{t+1}^*-\bw_t$ incurs transaction costs.
+The question is: \emph{what is the cheapest way to rearrange the current portfolio
+into the target?}
+
+This is precisely a \textbf{mass transportation problem}.
+
+\subsection{The Kantorovich formulation}
+
+Think of the current weights $\bw_t$ as a ``pile of sand'' distributed
+across $n$ assets, and the target $\bw_{t+1}^*$ as the desired landscape.
+A \emph{transport plan} $T\in\R^{n\times n}_{\ge 0}$ specifies how much
+weight to move from asset $i$ to asset $j$: $T_{ij}$ is the mass
+shipped from $i$ to $j$.
+
+\begin{definition}[Transport polytope]
+The set of valid plans:
+\begin{equation}
+\Pi(\bm{a},\bm{b}) := \{T\ge 0 : T\bm{1}=\bm{a},\;T^\top\bm{1}=\bm{b}\},
+\end{equation}
+where $\bm{a}:=|\bw_t|/\||\bw_t|\|_1$ and $\bm{b}:=|\bw_{t+1}^*|/\||\bw_{t+1}^*|\|_1$
+are the normalised absolute weights (probability distributions on assets).
+\end{definition}
+
+\begin{definition}[Cost matrix]
+The cost of shipping one unit from $i$ to $j$:
+\begin{equation}\label{eq:cost}
+C_{ij} := \begin{cases}0 & i=j,\\ |c_i|+|c_j| & i\neq j,\end{cases}
+\end{equation}
+where $c_i$ is the proportional transaction cost for asset $i$
+(default: 10\,bps).  The $i=j$ case is free because holding an asset
+costs nothing; the $i\neq j$ case is the cost of selling $i$ and buying $j$.
+\end{definition}
+
+\begin{definition}[Kantorovich optimal transport]\label{def:kant}
+\begin{equation}\label{eq:kant}
+T^* := \arg\min_{T\in\Pi(\bm{a},\bm{b})}\;\langle C,T\rangle
+  = \arg\min_{T\in\Pi(\bm{a},\bm{b})}\sum_{i,j}C_{ij}T_{ij}.
+\end{equation}
+\end{definition}
+
+This is a linear programme and can be solved exactly.  However,
+for larger $n$ or frequent rebalancing, we prefer the faster
+\emph{entropically regularised} version.
+
+\subsection{Entropic regularisation}
+
+\begin{proposition}[Regularised problem]\label{prop:entropic}
+Adding an entropic penalty:
+\begin{equation}\label{eq:ot_reg}
+T_\varepsilon^* := \arg\min_{T\in\Pi(\bm{a},\bm{b})}
+  \langle C,T\rangle + \varepsilon\sum_{i,j}T_{ij}(\log T_{ij}-1),
+\end{equation}
+with $\varepsilon = 0.05\cdot\mathrm{median}(\{C_{ij}:i\neq j,\,C_{ij}>0\})$.
+\end{proposition}
+
+\begin{proof}[Derivation of the solution structure]
+Write the Lagrangian with dual variables $\bm{f}\in\R^n$, $\bm{g}\in\R^n$
+for the marginal constraints:
+\begin{equation}
+\mathcal{L}(T,\bm{f},\bm{g}) = \sum_{ij}C_{ij}T_{ij}
+  + \varepsilon\sum_{ij}T_{ij}(\log T_{ij}-1)
+  + \sum_i f_i\Big(a_i - \sum_j T_{ij}\Big)
+  + \sum_j g_j\Big(b_j - \sum_i T_{ij}\Big).
+\end{equation}
+Setting $\partial\mathcal{L}/\partial T_{ij}=0$:
+\begin{equation}
+C_{ij} + \varepsilon\log T_{ij} - f_i - g_j = 0
+\quad\Longrightarrow\quad
+T_{ij} = \exp\!\Big(\frac{f_i-C_{ij}+g_j}{\varepsilon}\Big).
+\end{equation}
+Define $u_i:=e^{f_i/\varepsilon}$, $v_j:=e^{g_j/\varepsilon}$,
+$K_{ij}:=e^{-C_{ij}/\varepsilon}$ (the \emph{Gibbs kernel}).  Then:
+\begin{equation}\label{eq:Tstar_form}
+\boxed{T_{ij}^* = u_i\,K_{ij}\,v_j.}
+\end{equation}
+The vectors $\bm{u},\bm{v}$ are determined by the marginal constraints
+$T\bm{1}=\bm{a}$ and $T^\top\bm{1}=\bm{b}$, which become:
+\begin{equation}
+u_i\sum_j K_{ij}v_j = a_i,\qquad
+v_j\sum_i K_{ij}u_i = b_j.
+\end{equation}
+These are solved by alternating normalisation --- the Sinkhorn algorithm.
+\end{proof}
+
+\subsection{Sinkhorn algorithm}
+
+\begin{algorithm}[h]
+\caption{Sinkhorn iterations}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} marginals $\bm{a},\bm{b}\in\Delta^{n-1}$, kernel $K$,
+  tolerance $\delta=10^{-8}$
+\STATE $\bm{v}\leftarrow\bm{1}$
+\FOR{$\ell=1,\dots,200$}
+  \STATE $\bm{u}\leftarrow \bm{a}\oslash(K\bm{v})$
+  \hfill\textit{// enforce row marginal}
+  \STATE $\bm{v}\leftarrow \bm{b}\oslash(K^\top\bm{u})$
+  \hfill\textit{// enforce column marginal}
+  \IF{$\|K^\top\bm{u}\odot\bm{v}-\bm{b}\|_\infty<\delta$}
+    \STATE \textbf{break}
+  \ENDIF
+\ENDFOR
+\RETURN $T^*=\diag(\bm{u})\,K\,\diag(\bm{v})$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{proposition}[Convergence]
+Each Sinkhorn iteration is a coordinate ascent step on the dual problem.
+The dual objective is strictly concave (since $\varepsilon>0$), so the iterates
+converge linearly to the unique optimum at rate $O(e^{-c/\varepsilon})$.
+In practice, convergence occurs in 10--30 iterations.
+\end{proposition}
+
+\subsection{Transaction cost and net return}
+
+The optimal transport cost is
+\begin{equation}
+\mathcal{C}^* = \sum_{i\neq j}C_{ij}\,T_{ij}^*,
+\end{equation}
+and the net portfolio return is
+\begin{equation}
+r_t^{\mathrm{raw}} = (\bw_{t+1}^*)^\top\bm{r}_t - \mathcal{C}^*.
+\end{equation}
+
+%======================================================================
+\section{Performance Metrics}\label{sec:metrics}
+%======================================================================
+
+Let $\{r_t\}_{t=1}^T$ be the final (vol-targeted) return series with
+equity curve $\Pi_t=\prod_{s=1}^t(1+r_s)$.
+
+\begin{align}
+\text{Total return} &:= \Pi_T - 1,\\
+\text{Annualised return} &:= \Pi_T^{52/T} - 1,\\
+\text{Annualised vol} &:= \mathrm{std}(\{r_t\})\cdot\sqrt{52},\\
+\text{Sharpe ratio} &:= \frac{\text{Ann.\ return}}{\text{Ann.\ vol}},\\
+\text{Max drawdown} &:= \min_t\;\frac{\Pi_t - \max_{s\le t}\Pi_s}{\max_{s\le t}\Pi_s},\\
+\text{Calmar ratio} &:= \frac{\text{Ann.\ return}}{|\text{MDD}|},\\
+\text{Sortino ratio} &:= \frac{\text{Ann.\ return}}
+  {\mathrm{std}(\{r_t:r_t<0\})\cdot\sqrt{52}}.
+\end{align}
+
+\newpage
+%======================================================================
+\section*{References}
+%======================================================================
+
+\begin{enumerate}
+\item Garman, M.B.\ \& Klass, M.J.\ (1980). On the estimation of security price volatilities from historical data. \textit{J.\ Business}, 53(1), 67--78.
+\item Michaud, R.O.\ (1989). The Markowitz optimization enigma. \textit{Financial Analysts J.}, 45(1), 31--42.
+\item Wolpert, D.H.\ (1992). Stacked generalization. \textit{Neural Networks}, 5(2), 241--259.
+\item Higham, N.J.\ (2002). Computing the nearest correlation matrix. \textit{IMA J.\ Numer.\ Anal.}, 22(3), 329--343.
+\item Ledoit, O.\ \& Wolf, M.\ (2004). A well-conditioned estimator for large-dimensional covariance matrices. \textit{J.\ Multivariate Anal.}, 88(2), 365--411.
+\item Cuturi, M.\ (2013). Sinkhorn distances. \textit{Advances in NIPS}, 26.
+\item Peyr\'e, G.\ \& Cuturi, M.\ (2019). Computational Optimal Transport. \textit{Found.\ Trends ML}, 11(5--6), 355--607.
+\end{enumerate}
+
+\end{document}
