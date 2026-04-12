@@ -1,0 +1,13 @@
+﻿#!/usr/bin/env python3
+"""
+PRISM v3 — Topological Sharpe–OT Pipeline
+==========================================
+Benjamin Coriat — April 2026
+
+v3:  24 global indices + commodities, order book tracker,
+     improved ensemble (extra features, deeper tuning, feature importance),
+     vol-fit to 15 % for fair comparison, 30+ diagnostic plots,
+     comprehensive per-asset logging.
+"""
+
+# ═══════════════════════════════════════════════════════════════════════

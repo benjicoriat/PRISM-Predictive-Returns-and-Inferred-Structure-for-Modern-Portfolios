@@ -1,0 +1,175 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{markowitz1952}
+\citation{merton1980}
+\citation{michaud1989}
+\citation{demiguel2009}
+\citation{gu2020empirical}
+\citation{markowitz1952}
+\citation{sharpe1966}
+\citation{merton1980}
+\citation{michaud1989}
+\citation{best1991}
+\citation{chopra1993}
+\citation{demiguel2009}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{1}{Introduction}{section.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{1}{section.2}\protected@file@percent }
+\newlabel{sec:lit}{{2}{1}{Related Work}{section.2}{}}
+\citation{ledoit2004}
+\citation{james1961}
+\citation{jorion1986}
+\citation{black1992}
+\citation{bental2009}
+\citation{gu2020empirical}
+\citation{feng2020taming}
+\citation{wolpert1992}
+\citation{breiman1996}
+\citation{cuturi2013}
+\citation{peyre2019}
+\citation{blanchet2019}
+\citation{esfahani2018}
+\citation{garman1980}
+\citation{longin2001}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Data Pipeline}{2}{section.3}\protected@file@percent }
+\newlabel{sec:data}{{3}{2}{Data Pipeline}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Universe and horizon}{2}{subsection.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Log-scale evolution of all 24 assets (signal $\hat  \mu ^B$ normalised to 1 at the start of the test period, 2012--2025). Commodities and emerging-market indices show the widest dispersion, motivating the need for an adaptive confidence mechanism.}}{2}{figure.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:assets}{{1}{2}{Log-scale evolution of all 24 assets (signal $\hat \mu ^B$ normalised to 1 at the start of the test period, 2012--2025). Commodities and emerging-market indices show the widest dispersion, motivating the need for an adaptive confidence mechanism}{figure.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Cleaning and resampling}{2}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Volatility estimation}{2}{subsection.3.3}\protected@file@percent }
+\newlabel{eq:gk}{{1}{2}{Volatility estimation}{equation.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Forecasting Ensemble}{2}{section.4}\protected@file@percent }
+\newlabel{sec:ensemble}{{4}{2}{Forecasting Ensemble}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Feature construction}{2}{subsection.4.1}\protected@file@percent }
+\citation{wolpert1992}
+\citation{breiman1996}
+\citation{akiba2019optuna}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Feature sets for the two prediction tasks.}}{3}{table.caption.3}\protected@file@percent }
+\newlabel{tab:features}{{1}{3}{Feature sets for the two prediction tasks}{table.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Stacked generalisation}{3}{subsection.4.2}\protected@file@percent }
+\newlabel{eq:meta}{{2}{3}{Stacked generalisation}{equation.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Error Characterisation}{3}{section.5}\protected@file@percent }
+\newlabel{sec:error}{{5}{3}{Error Characterisation}{section.5}{}}
+\newlabel{def:Emu}{{1}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{definition.1}{}}
+\newlabel{eq:emu1}{{3}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{equation.3}{}}
+\newlabel{eq:emu2}{{4}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{equation.4}{}}
+\newlabel{eq:emu3}{{5}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{equation.5}{}}
+\newlabel{eq:emu4}{{6}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{equation.6}{}}
+\newlabel{eq:emu5}{{7}{3}{Return error matrix $E_\mu \in \R ^{n\times 5}$}{equation.7}{}}
+\citation{james1961}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Confidence and Bayesian Posterior}{4}{section.6}\protected@file@percent }
+\newlabel{sec:confidence}{{6}{4}{Confidence and Bayesian Posterior}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}From error statistics to confidence}{4}{subsection.6.1}\protected@file@percent }
+\newlabel{eq:sbias}{{8}{4}{From error statistics to confidence}{equation.8}{}}
+\newlabel{eq:sdir}{{9}{4}{From error statistics to confidence}{equation.9}{}}
+\newlabel{eq:sdisp}{{10}{4}{From error statistics to confidence}{equation.10}{}}
+\newlabel{eq:sskew}{{11}{4}{From error statistics to confidence}{equation.11}{}}
+\newlabel{eq:kappa}{{12}{4}{From error statistics to confidence}{equation.12}{}}
+\newlabel{eq:mu_tilde}{{13}{4}{From error statistics to confidence}{equation.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Confidence $\kappa _i$ for 10 representative assets over the out-of-sample period (2012--2025). All series are initialised near 1 and adapt as the error history grows. Commodity futures (gold, oil, gas) and VIX exhibit higher sustained confidence than equity indices, reflecting more persistent return signal structure.}}{4}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:kappa10}{{2}{4}{Confidence $\kappa _i$ for 10 representative assets over the out-of-sample period (2012--2025). All series are initialised near 1 and adapt as the error history grows. Commodity futures (gold, oil, gas) and VIX exhibit higher sustained confidence than equity indices, reflecting more persistent return signal structure}{figure.caption.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Average $\kappa $ (top) and predicted portfolio volatility (bottom) over 2012--2025. Confidence drops sharply during high-volatility regimes (2015--16 China shock, 2018 rate fears, 2020 COVID, 2022 rate cycle), confirming that the error characterisation correctly identifies when to trust model output less.}}{4}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:kappavol}{{3}{4}{Average $\kappa $ (top) and predicted portfolio volatility (bottom) over 2012--2025. Confidence drops sharply during high-volatility regimes (2015--16 China shock, 2018 rate fears, 2020 COVID, 2022 rate cycle), confirming that the error characterisation correctly identifies when to trust model output less}{figure.caption.5}{}}
+\citation{higham2002}
+\citation{cornuejols2007}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Bayesian posterior}{5}{subsection.6.2}\protected@file@percent }
+\newlabel{eq:muB}{{14}{5}{Bayesian posterior}{equation.14}{}}
+\newlabel{eq:SigB}{{15}{5}{Bayesian posterior}{equation.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Final covariance}{5}{subsection.6.3}\protected@file@percent }
+\newlabel{eq:Sigma_final}{{16}{5}{Final covariance}{equation.16}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Heatmap of the Bayesian posterior mean $\mu ^B$ (\% weekly) over the test period, sampled every 4 weeks. Rows are assets; green=positive, red=negative expected return. Commodities exhibit persistent positive expectations in trend-following regimes, while equity indices show more synchronised reversals.}}{5}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:muB}{{4}{5}{Heatmap of the Bayesian posterior mean $\mu ^B$ (\% weekly) over the test period, sampled every 4 weeks. Rows are assets; green=positive, red=negative expected return. Commodities exhibit persistent positive expectations in trend-following regimes, while equity indices show more synchronised reversals}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Sharpe-Optimal Allocation}{5}{section.7}\protected@file@percent }
+\newlabel{sec:sharpe}{{7}{5}{Sharpe-Optimal Allocation}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Why Sharpe maximisation?}{5}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}From fractional programme to QP sweep}{5}{subsection.7.2}\protected@file@percent }
+\newlabel{eq:SR}{{17}{5}{From fractional programme to QP sweep}{equation.17}{}}
+\newlabel{eq:J}{{18}{5}{From fractional programme to QP sweep}{equation.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}KKT derivation}{5}{subsection.7.3}\protected@file@percent }
+\newlabel{eq:lagrangian}{{19}{5}{KKT derivation}{equation.19}{}}
+\citation{michaud1989}
+\newlabel{eq:foc}{{20}{6}{KKT derivation}{equation.20}{}}
+\newlabel{eq:w_closed}{{21}{6}{KKT derivation}{equation.21}{}}
+\newlabel{eq:lambda}{{22}{6}{KKT derivation}{equation.22}{}}
+\newlabel{eq:w_final}{{23}{6}{KKT derivation}{equation.23}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Constrained programme}{6}{subsection.7.4}\protected@file@percent }
+\newlabel{eq:qp_full}{{24}{6}{Constrained programme}{equation.24}{}}
+\newlabel{eq:c_budget}{{25}{6}{Constrained programme}{equation.25}{}}
+\newlabel{eq:c_lo}{{26}{6}{Constrained programme}{equation.26}{}}
+\newlabel{eq:c_conc}{{27}{6}{Constrained programme}{equation.27}{}}
+\newlabel{eq:gamma_star}{{28}{6}{Constrained programme}{equation.28}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Long weight stacks (top) and short weight magnitudes (bottom) over the test period. The long-only, no-leverage constraint keeps all weights non-negative; the short panel confirms zero short exposure throughout. Diversification is maintained across the 24-asset universe.}}{6}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:weightstacks}{{5}{6}{Long weight stacks (top) and short weight magnitudes (bottom) over the test period. The long-only, no-leverage constraint keeps all weights non-negative; the short panel confirms zero short exposure throughout. Diversification is maintained across the 24-asset universe}{figure.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Volatility targeting (no leverage)}{6}{subsection.7.5}\protected@file@percent }
+\newlabel{eq:vt}{{29}{6}{Volatility targeting (no leverage)}{equation.29}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Optimal Transport Execution}{6}{section.8}\protected@file@percent }
+\newlabel{sec:ot}{{8}{6}{Optimal Transport Execution}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Kantorovich formulation}{6}{subsection.8.1}\protected@file@percent }
+\newlabel{eq:kant}{{30}{6}{Kantorovich formulation}{equation.30}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Entropic regularisation and Sinkhorn}{7}{subsection.8.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Net weight changes at the final rebalance. Green bars indicate increases (buys), red bars decreases (sells). The long-only constraint ensures all weights remain non-negative, so sells reduce exposure to zero at most.}}{7}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:lasttrades}{{6}{7}{Net weight changes at the final rebalance. Green bars indicate increases (buys), red bars decreases (sells). The long-only constraint ensures all weights remain non-negative, so sells reduce exposure to zero at most}{figure.caption.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Execution summary over the out-of-sample period (2012--2025, 680 weekly rebalances).}}{7}{table.caption.9}\protected@file@percent }
+\newlabel{tab:execution}{{2}{7}{Execution summary over the out-of-sample period (2012--2025, 680 weekly rebalances)}{table.caption.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Results}{7}{section.9}\protected@file@percent }
+\newlabel{sec:results}{{9}{7}{Results}{section.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Forecast quality}{7}{subsection.9.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Return signal quality by ticker (ranked by $R^2$; lag-1 autocorrelation of $\mu ^B$; 2012--2025).}}{7}{table.caption.10}\protected@file@percent }
+\newlabel{tab:r2da}{{3}{7}{Return signal quality by ticker (ranked by $R^2$; lag-1 autocorrelation of $\mu ^B$; 2012--2025)}{table.caption.10}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Return signal $R^2$ by ticker (lag-1 autocorrelation of $\mu ^B$, 2012--2025, sorted descending). Commodity futures and VIX exhibit the strongest signal persistence. Equity indices are harder to predict at the weekly horizon.}}{7}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:r2da}{{7}{7}{Return signal $R^2$ by ticker (lag-1 autocorrelation of $\mu ^B$, 2012--2025, sorted descending). Commodity futures and VIX exhibit the strongest signal persistence. Equity indices are harder to predict at the weekly horizon}{figure.caption.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Portfolio performance}{7}{subsection.9.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Out-of-sample performance (2012--2025, 680 weekly observations). All strategies are vol-targeted to 15\% where indicated. No-Lev: leverage multiplier capped at 1$\times $ (scales down when vol $>15\%$, never levers up). \textbf  {Bold} highlights the best value in each column.}}{8}{table.caption.12}\protected@file@percent }
+\newlabel{tab:perf}{{4}{8}{Out-of-sample performance (2012--2025, 680 weekly observations). All strategies are vol-targeted to 15\% where indicated. No-Lev: leverage multiplier capped at 1$\times $ (scales down when vol $>15\%$, never levers up). \textbf {Bold} highlights the best value in each column}{table.caption.12}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Cumulative returns (log scale) for PRISM No-Lev, equal-weight, and SPY, all vol-targeted to 15\% with leverage capped at 1$\times $. The comparison is fair: all three strategies face identical risk budgets. PRISM compounds wealth at a substantially higher rate while absorbing dramatically smaller drawdowns.}}{8}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:cumret}{{8}{8}{Cumulative returns (log scale) for PRISM No-Lev, equal-weight, and SPY, all vol-targeted to 15\% with leverage capped at 1$\times $. The comparison is fair: all three strategies face identical risk budgets. PRISM compounds wealth at a substantially higher rate while absorbing dramatically smaller drawdowns}{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Confidence diagnostics}{8}{subsection.9.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Drawdown profiles for PRISM No-Lev (top), EW No-Lev (middle), and SPY No-Lev (bottom). PRISM's worst drawdown ($-9.3\%$) is a fraction of EW ($-21.9\%$) and SPY ($-27.3\%$), demonstrating superior downside protection from the confidence-gated allocation.}}{8}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:drawdowns}{{9}{8}{Drawdown profiles for PRISM No-Lev (top), EW No-Lev (middle), and SPY No-Lev (bottom). PRISM's worst drawdown ($-9.3\%$) is a fraction of EW ($-21.9\%$) and SPY ($-27.3\%$), demonstrating superior downside protection from the confidence-gated allocation}{figure.caption.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Rolling 26-week annualised volatility for PRISM No-Lev, PRISM Raw, EW, and SPY. The no-leverage vol-targeting (dashed red line at 15\%) keeps PRISM within the target budget during calm markets and scales back during crises---it never adds leverage. SPY exhibits persistent over-target vol during stress events.}}{8}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:rollvol}{{10}{8}{Rolling 26-week annualised volatility for PRISM No-Lev, PRISM Raw, EW, and SPY. The no-leverage vol-targeting (dashed red line at 15\%) keeps PRISM within the target budget during calm markets and scales back during crises---it never adds leverage. SPY exhibits persistent over-target vol during stress events}{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.4}Additional diagnostics}{8}{subsection.9.4}\protected@file@percent }
+\citation{ledoit2004}
+\citation{black1992}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Monthly return heatmap for PRISM No-Lev (2012--2025). Green = positive month, red = negative. The strategy produces broadly positive months across all years, with the worst drawdowns confined to isolated calendar months rather than extended losing streaks.}}{9}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:monthly}{{11}{9}{Monthly return heatmap for PRISM No-Lev (2012--2025). Green = positive month, red = negative. The strategy produces broadly positive months across all years, with the worst drawdowns confined to isolated calendar months rather than extended losing streaks}{figure.caption.16}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Annual returns for PRISM No-Lev, equal-weight, and SPY. PRISM delivers positive annual returns in every calendar year of the test period, including 2015 (China shock), 2018 (rate fears), and 2022 (rate cycle), where both benchmarks suffered significant losses.}}{9}{figure.caption.17}\protected@file@percent }
+\newlabel{fig:annual}{{12}{9}{Annual returns for PRISM No-Lev, equal-weight, and SPY. PRISM delivers positive annual returns in every calendar year of the test period, including 2015 (China shock), 2018 (rate fears), and 2022 (rate cycle), where both benchmarks suffered significant losses}{figure.caption.17}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces Weekly turnover (top) and transaction cost in bps (bottom). Average turnover of 0.67 and average TC of 0.07\,bps confirm that the OT routing achieves rebalancing at minimal frictional cost. The strategy is implementable at institutional scale.}}{9}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:tcturnover}{{13}{9}{Weekly turnover (top) and transaction cost in bps (bottom). Average turnover of 0.67 and average TC of 0.07\,bps confirm that the OT routing achieves rebalancing at minimal frictional cost. The strategy is implementable at institutional scale}{figure.caption.18}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces Mean allocation weight per asset (averaged across the test period, 2012--2025). Gold (\texttt  {GC=F}), silver, and natural gas command the highest mean absolute weight, consistent with the high return signal $R^2$ observed for commodities.}}{9}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:metaweights}{{14}{9}{Mean allocation weight per asset (averaged across the test period, 2012--2025). Gold (\texttt {GC=F}), silver, and natural gas command the highest mean absolute weight, consistent with the high return signal $R^2$ observed for commodities}{figure.caption.19}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {10}Discussion}{9}{section.10}\protected@file@percent }
+\newlabel{sec:discussion}{{10}{9}{Discussion}{section.10}{}}
+\bibcite{markowitz1952}{1}
+\bibcite{sharpe1966}{2}
+\bibcite{merton1980}{3}
+\bibcite{michaud1989}{4}
+\bibcite{best1991}{5}
+\bibcite{chopra1993}{6}
+\bibcite{demiguel2009}{7}
+\bibcite{james1961}{8}
+\bibcite{jorion1986}{9}
+\bibcite{ledoit2004}{10}
+\bibcite{black1992}{11}
+\bibcite{bental2009}{12}
+\bibcite{gu2020empirical}{13}
+\bibcite{feng2020taming}{14}
+\bibcite{longin2001}{15}
+\bibcite{wolpert1992}{16}
+\bibcite{breiman1996}{17}
+\bibcite{garman1980}{18}
+\bibcite{cuturi2013}{19}
+\bibcite{peyre2019}{20}
+\bibcite{blanchet2019}{21}
+\bibcite{esfahani2018}{22}
+\bibcite{cornuejols2007}{23}
+\bibcite{higham2002}{24}
+\bibcite{akiba2019optuna}{25}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{10}{section.11}\protected@file@percent }
+\newlabel{sec:conclusion}{{11}{10}{Conclusion}{section.11}{}}
+\gdef \@abspage@last{10}
