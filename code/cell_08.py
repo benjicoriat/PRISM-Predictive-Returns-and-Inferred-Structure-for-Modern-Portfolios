@@ -107,6 +107,8 @@ def train_ensemble(X, y, cfg, label="", dk=None, ds=None):
     return {"scaler":sc,"base":trained,"meta":meta}
 
 def ens_predict(ens, X):
+    # Meta-learner was trained on [base_preds | abs(base_preds - y)].
+    # At inference y is unknown, so the absolute-error block is zeroed.
     Xs = ens["scaler"].transform(X)
     bp = np.column_stack([m.predict(Xs) for m in ens["base"].values()])
     return ens["meta"].predict(np.hstack([bp, np.zeros_like(bp)]))

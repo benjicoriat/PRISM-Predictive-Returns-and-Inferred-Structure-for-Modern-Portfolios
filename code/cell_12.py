@@ -10,6 +10,7 @@ def run_backtest(po, wr, wc, wg, tickers, cfg):
     le,se,gl,ne,rv_l=[],[],[],[],[]
     realized=[]
     w_cur=np.ones(n)/n
+    rng = np.random.default_rng(cfg.RANDOM_SEED)  # one stream for the whole backtest
 
     for rec in tqdm(po, desc="Backtesting"):
         dt=rec["date"]
@@ -30,7 +31,7 @@ def run_backtest(po, wr, wc, wg, tickers, cfg):
             kappa=compute_conf(rec["E_mu"],cfg)
             mu0=np.mean(rec["mu_hat"]); mu_t=kappa*rec["mu_hat"]+(1-kappa)*mu0
             Vs=rec["V"].copy(); Vs[~np.isfinite(Vs)]=0
-            Vs+=np.random.RandomState(42).randn(*Vs.shape)*1e-8
+            Vs+=rng.standard_normal(Vs.shape)*1e-8
             sh=np.cov(Vs) if Vs.shape[1]>1 else np.eye(n)*0.01
             if not np.all(np.isfinite(sh)): sh=np.eye(n)*0.01
             sh=nearest_pd(sh)

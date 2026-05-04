@@ -310,7 +310,7 @@ except Exception as exc:
 
 # ── P12: Monthly heatmap ─────────────────────────────────────────────────
 try:
-    mo = results["Strat_NoLev"].resample("M").apply(lambda x: (1 + x).prod() - 1)
+    mo = results["Strat_NoLev"].resample("ME").apply(lambda x: (1 + x).prod() - 1)
     mh = pd.DataFrame({"Y": mo.index.year, "M": mo.index.month, "R": mo.values})
     piv = mh.pivot_table(values="R", index="Y", columns="M", aggfunc="first")
     piv = piv.reindex(columns=list(range(1, 13)))
@@ -543,10 +543,10 @@ except Exception as exc:
 # ── P23: Annual returns ───────────────────────────────────────────────────
 try:
     ydf = pd.DataFrame({
-        "PRISM No-Lev": results["Strat_NoLev"].resample("A").apply(
+        "PRISM No-Lev": results["Strat_NoLev"].resample("YE").apply(
             lambda x: (1 + x).prod() - 1),
-        "EW":  results["EW"].resample("A").apply(lambda x: (1 + x).prod() - 1),
-        "SPY": results["SPY"].resample("A").apply(lambda x: (1 + x).prod() - 1),
+        "EW":  results["EW"].resample("YE").apply(lambda x: (1 + x).prod() - 1),
+        "SPY": results["SPY"].resample("YE").apply(lambda x: (1 + x).prod() - 1),
     })
     ydf.index = ydf.index.year
     fig, ax = plt.subplots(figsize=(14, 6))
