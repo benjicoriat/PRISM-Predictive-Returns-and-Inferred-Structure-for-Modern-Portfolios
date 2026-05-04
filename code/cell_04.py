@@ -47,7 +47,9 @@ class OrderBookTracker:
                     "bids": bids, "asks": asks,
                     "gk_vol": gk,
                 }
-            except: continue
+            except (KeyError, ValueError, TypeError) as e:
+                log.debug(f"OB snapshot skip {tk} @ {date}: {e}")
+                continue
         self.book_snapshots.append(snap)
         return snap
 

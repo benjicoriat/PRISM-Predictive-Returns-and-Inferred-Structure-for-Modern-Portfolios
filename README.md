@@ -22,6 +22,7 @@ The implementation in this repository is organized as split Python cells that ru
 - `Latex/`: LaTeX source and compiled PRISM paper PDF
 - `Final_Deliverables/`: submission-ready PDFs and Python file
 - `requirements.txt`: base Python dependency list
+- `agents/`: review-panel agents that audit code, paper, and math (see `agents/README.md`)
 
 ## Quick start
 
@@ -47,7 +48,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Note: the pipeline itself also installs additional research dependencies during execution (for example `yfinance`, `optuna`, `cvxpy`, `ripser`, `persim`, `seaborn`, `tqdm`, `tabulate`, and optional `torch`).
+All required research dependencies are listed in `requirements.txt`. The pipeline also issues a defensive `pip install` of the same packages at startup (cell 1) so that an under-provisioned environment can self-heal; this is a no-op if the packages are already present. `torch` is optional — it enables the MLP base learner in the ensemble when installed.
+
+Tested with Python 3.10+ and pandas 2.x. On older pandas (< 2.2) the deprecated frequency aliases used here (`"ME"`, `"YE"`) emit warnings; please upgrade.
 
 ### 3) Run the full PRISM pipeline
 
@@ -87,6 +90,23 @@ Saved to `images/`:
 
 - Main paper source and build: `Latex/PRISM.tex` and `Latex/PRISM.pdf`
 - Final deliverables folder contains submission outputs and code snapshot.
+
+## Reviewing the project with the agent panel
+
+A team of specialist reviewers (code, math, paper, reproducibility,
+quant, consistency, documentation) lives under `agents/`. To run a full
+review:
+
+```bash
+export ANTHROPIC_API_KEY=...
+pip install anthropic
+python -m agents.run_review
+```
+
+The consolidated report is written to `agents/reports/review.md`. See
+`agents/README.md` for details and how to extend the panel. The same
+roles are also exposed as Claude Code subagents under
+`.claude/agents/prism-*.md`.
 
 ## Notes
 

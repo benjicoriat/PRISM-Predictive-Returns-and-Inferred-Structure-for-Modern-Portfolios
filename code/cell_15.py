@@ -43,6 +43,11 @@ print(dbg_txt)
 (OUTPUTS_DIR / "debug_log_last_80.txt").write_text(dbg_txt + "\n", encoding="utf-8")
 (OUTPUTS_DIR / "debug_log_full.txt").write_text(LOG_BUF.getvalue(), encoding="utf-8")
 
-done_msg = "\n✅ PRISM v3 COMPLETE — 24 tickers, long-only, no-leverage, vol@15%, 31 plots"
+done_msg = (
+    f"\n✅ PRISM v3 COMPLETE — {len(TICKERS)} tickers, "
+    f"{'long-only' if CFG.LONG_ONLY else 'long/short'}, "
+    f"{'no-leverage' if CFG.VOL_TARGET_CAP <= 1.0 else f'lev≤{CFG.VOL_TARGET_CAP:g}x'}, "
+    f"vol@{CFG.SIGMA_TARGET_ANN:.0%}, 31 plots"
+)
 print(done_msg)
 (OUTPUTS_DIR / "run_complete.txt").write_text(done_msg.strip() + "\n", encoding="utf-8")
