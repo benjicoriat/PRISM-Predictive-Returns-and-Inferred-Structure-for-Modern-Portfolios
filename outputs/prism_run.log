@@ -1,0 +1,41 @@
+17:39:30 | INFO  | Logging ready -- DEBUG->buffer+file, INFO->console
+17:39:30 | INFO  | Config: 24 tickers | LongOnly=True | Lmax=1.0 | sigma*=15% | LevCap=1.0
+17:39:30 | INFO  | TC model: asset-class specific, VOL_SENSITIVITY=0.05, IMPACT_SCALE=0.02
+17:39:30 | INFO  | ==================== DATA DOWNLOAD ====================
+17:39:30 | INFO  | Downloading 24 tickers ...
+17:39:39 | INFO  | Download: 8.8s, shape=(5992, 144)
+17:39:39 | DEBUG |   ^GSPC: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^NDX: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^DJI: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^RUT: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^VIX: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^FTSE: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^GDAXI: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^N225: 5990 days, 2003-01-06->2025-12-30
+17:39:39 | DEBUG |   ^HSI: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^STOXX50E: 4888 days, 2007-03-30->2025-12-30
+17:39:39 | DEBUG |   ^AXJO: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^BSESN: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^NSEI: 4767 days, 2007-09-17->2025-12-30
+17:39:39 | DEBUG |   ^KS11: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^TWII: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^BVSP: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^MXX: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^GSPTSE: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^FCHI: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   ^IBEX: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   GC=F: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   SI=F: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   CL=F: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | DEBUG |   NG=F: 5992 days, 2003-01-02->2025-12-30
+17:39:39 | INFO  | Kept 24/24 tickers
+17:39:39 | INFO  |   DATA DOWNLOAD completed in 9.0s
+17:39:39 | INFO  | ==================== WEEKLY RESAMPLE ====================
+17:39:41 | INFO  | SPY benchmark: 1200 weeks
+17:39:41 | INFO  | Weekly: 1200 wks x 24 tickers
+17:39:41 | INFO  |   WEEKLY RESAMPLE completed in 1.6s
+17:39:41 | INFO  | ==================== FEATURE ENGINEERING ====================
+17:39:42 | INFO  | 1174 corr matrices
+17:44:10 | INFO  | Pair: (313181, 14) | Return: (27828, 17)
+17:44:10 | INFO  |   FEATURE ENGINEERING completed in 268.8s
+17:44:10 | INFO  | ==================== TRAINING PAIR MODELS ====================

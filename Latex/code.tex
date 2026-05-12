@@ -105,12 +105,13 @@ No magic numbers live outside it.
 \code{SIGMA\_TARGET}     & 0.15      & Ann.\ vol target\\
 \code{RF\_ANNUAL}        & 0.045     & Risk-free rate\\[6pt]
 \multicolumn{3}{@{}l}{\textit{Execution}}\\[2pt]
-\code{DEFAULT\_TC\_BPS}  & 10        & Transaction cost (bps)\\
+\code{TC\_VOL\_SENSITIVITY} & 0.05   & Half-spread vol sensitivity ($\alpha_{\mathrm{tc}}$)\\
+\code{TC\_IMPACT\_SCALE}    & 0.02   & Market impact scale ($\beta_{\mathrm{tc}}$)\\
 \code{SINKHORN\_EPS}     & 0.05      & OT regularisation scale\\
 \code{SINKHORN\_ITER}    & 200       & Max Sinkhorn iterations\\
 \code{SINKHORN\_TOL}     & $10^{-8}$ & Convergence threshold\\
 \code{VOL\_LOOKBACK}     & 26        & Vol-target lookback\\
-\code{VOL\_CAP}          & 2.5       & Max vol-target leverage\\
+\code{VOL\_CAP}          & 1.0       & Max vol-target leverage (no leverage)\\
 \bottomrule
 \end{longtable}
 
@@ -289,6 +290,10 @@ The math is in \textit{Math Foundations}, Sections 4--9; here we
 document the implementation.
 
 \begin{tcolorbox}[colback=gray!3, colframe=gray!50!black]
+\textbf{Stage 0: TC matrix} (\code{build\_tc\_matrix}).
+Reads GK vol for the current week, computes $C_{ij}(t)$ per asset class.
+$\to$ $C\in\mathbb{R}^{n\times n}$, symmetric, zero diagonal.
+
 \textbf{Stage 1: Confidence} (\code{compute\_conf}).
 Reads $E_\mu$, returns $\kappa\in\mathbb{R}^n$.
 
@@ -370,7 +375,7 @@ max drawdown, Calmar, win rate, skewness, kurtosis.
 \section{Diagnostic Plots (Cell 14)}\label{sec:plots}
 %======================================================================
 
-31 plots, grouped thematically.
+32 plots, grouped thematically.
 
 \begin{center}
 \renewcommand{\arraystretch}{1.05}
@@ -414,6 +419,7 @@ P28 & Strategy vs.\ benchmarks & At 15\% vol\\
 P29 & Order book summary       & Fill counts, notional\\
 P30 & Spread history           & \\
 P31 & Last trades              & Net flows, final rebalance\\
+P32 & TC matrix heatmap        & Average transaction costs (bps)\\
 \bottomrule
 \end{tabular}
 \end{center}

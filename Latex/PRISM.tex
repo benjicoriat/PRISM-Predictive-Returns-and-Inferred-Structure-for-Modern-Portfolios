@@ -748,9 +748,46 @@ structure of transaction costs?}
 
 Normalise to probability distributions:
 $\bm{a}=|\bw_t|/\||\bw_t|\|_1$,
-$\bm{b}=|\bw^*|/\||\bw^*|\|_1$.  The cost matrix has entries
-$C_{ij}=|c_i|+|c_j|$ for $i\neq j$ (10\,bps per leg),
-$C_{ii}=0$.  The transport polytope is
+$\bm{b}=|\bw^*|/\||\bw^*|\|_1$.
+
+\begin{definition}[Asset-pair cost matrix]
+The cost of rebalancing one unit from asset $i$ to asset $j$:
+\begin{equation}\label{eq:cost_new}
+C_{ij}(t) := \begin{cases}0 & i=j,\\
+  h_i(t) + h_j(t) + \eta_i(t) + \eta_j(t) & i\neq j,\end{cases}
+\end{equation}
+where the half-spread $h_i(t) = h_i^0 + \alpha_{\mathrm{tc}}\hat\sigma_i^{\mathrm{GK}}(t)$
+combines a fixed asset-class base spread $h_i^0$ (Table~\ref{tab:tc_classes})
+with a volatility-dependent widening, and the market impact
+$\eta_i(t) = \beta_{\mathrm{tc}}\hat\sigma_i^{\mathrm{GK}}(t)$ is proportional
+to current realised vol.  The matrix is symmetric ($C_{ij}=C_{ji}$) and
+\emph{time-varying}: during high-volatility regimes, rebalancing costs increase
+automatically, causing the OT solver to prefer smaller trades.
+\end{definition}
+
+\begin{table}[!htbp]
+\centering
+\caption{Base half-spread by asset class ($h_i^0$ in bps).}
+\label{tab:tc_classes}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Asset class} & \textbf{Tickers} & \textbf{$h_i^0$ (bps)} \\
+\midrule
+US Large-Cap  & GSPC, NDX, DJI      & 1.5 \\
+US Small-Cap  & RUT                  & 3.0 \\
+VIX           & VIX                  & 15.0 \\
+European      & FTSE, DAX, STOXX, CAC, IBEX & 2.5 \\
+Asia Developed & N225, HSI, KS11, TWII & 3.5 \\
+DM Other      & AXJO, GSPTSE         & 2.5 \\
+Emerging      & BSESN, NSEI, BVSP, MXX & 5.0 \\
+Precious Metals & GC=F, SI=F         & 2.0 \\
+Energy        & CL=F, NG=F           & 4.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The transport polytope is
 $\Pi(\bm{a},\bm{b})=\{T\ge 0:T\bm{1}=\bm{a},\,T^\top\bm{1}=\bm{b}\}$.
 The Kantorovich problem is:
 \begin{equation}\label{eq:kant}

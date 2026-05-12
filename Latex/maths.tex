@@ -480,14 +480,21 @@ where $\bm{a}:=|\bw_t|/\||\bw_t|\|_1$ and $\bm{b}:=|\bw_{t+1}^*|/\||\bw_{t+1}^*|
 are the normalised absolute weights (probability distributions on assets).
 \end{definition}
 
-\begin{definition}[Cost matrix]
-The cost of shipping one unit from $i$ to $j$:
+\begin{definition}[Asset-pair cost matrix]
+The cost of rebalancing one unit from asset $i$ to asset $j$ at time $t$:
 \begin{equation}\label{eq:cost}
-C_{ij} := \begin{cases}0 & i=j,\\ |c_i|+|c_j| & i\neq j,\end{cases}
+C_{ij}(t) := \begin{cases}0 & i=j,\\
+  h_i(t) + h_j(t) + \eta_i(t) + \eta_j(t) & i\neq j,\end{cases}
 \end{equation}
-where $c_i$ is the proportional transaction cost for asset $i$
-(default: 10\,bps).  The $i=j$ case is free because holding an asset
-costs nothing; the $i\neq j$ case is the cost of selling $i$ and buying $j$.
+where the half-spread $h_i(t) = h_i^0 + \alpha_{\mathrm{tc}}\hat\sigma_i^{\mathrm{GK}}(t)$
+combines a fixed asset-class base spread $h_i^0$ (ranging from 1.5\,bps for
+US large-cap to 15\,bps for VIX) with a volatility-dependent widening
+($\alpha_{\mathrm{tc}}=0.05$), and the market impact
+$\eta_i(t) = \beta_{\mathrm{tc}}\hat\sigma_i^{\mathrm{GK}}(t)$
+($\beta_{\mathrm{tc}}=0.02$) is proportional to current realised vol.
+The matrix is symmetric ($C_{ij}=C_{ji}$), has zero diagonal, and is
+\emph{time-varying}: during high-volatility regimes, rebalancing costs
+increase automatically, causing the OT solver to prefer smaller trades.
 \end{definition}
 
 \begin{definition}[Kantorovich optimal transport]\label{def:kant}
